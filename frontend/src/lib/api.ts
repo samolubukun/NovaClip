@@ -1,0 +1,116 @@
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
+export const api = {
+  async createTask(payload: object) {
+    const geminiKey = localStorage.getItem("novaclip_gemini_key");
+    const deepgramKey = localStorage.getItem("novaclip_deepgram_key");
+
+    const fullPayload = {
+      ...payload,
+      ...(geminiKey ? { gemini_api_key: geminiKey } : {}),
+      ...(deepgramKey ? { deepgram_api_key: deepgramKey } : {}),
+    };
+
+    const r = await fetch(`${API_BASE}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fullPayload),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
+
+  async getTask(id: string) {
+    const r = await fetch(`${API_BASE}/tasks/${id}`);
+    if (!r.ok) throw new Error("Task not found");
+    return r.json();
+  },
+
+  async listTasks() {
+    const r = await fetch(`${API_BASE}/tasks`);
+    if (!r.ok) throw new Error("Failed to fetch tasks");
+    return r.json();
+  },
+
+  async deleteTask(id: string) {
+    const r = await fetch(`${API_BASE}/tasks/${id}`, { method: "DELETE" });
+    return r.ok;
+  },
+
+  async cancelTask(id: string) {
+    const r = await fetch(`${API_BASE}/tasks/${id}/cancel`, { method: "POST" });
+    return r.ok;
+  },
+
+  async resumeTask(id: string) {
+    const r = await fetch(`${API_BASE}/tasks/${id}/resume`, { method: "POST" });
+    if (!r.ok) throw new Error("Resume failed");
+    return r.json();
+  },
+
+  async updateTask(id: string, payload: object) {
+    const r = await fetch(`${API_BASE}/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return r.json();
+  },
+
+  async applySettings(id: string, payload: object) {
+    const r = await fetch(`${API_BASE}/tasks/${id}/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return r.json();
+  },
+
+  async deleteClip(taskId: string, clipId: string) {
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/clips/${clipId}`, { method: "DELETE" });
+    return r.ok;
+  },
+
+  async trimClip(taskId: string, clipId: string, startOffset: number, endOffset: number) {
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/clips/${clipId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_offset: startOffset, end_offset: endOffset }),
+    });
+    return r.json();
+  },
+
+  async uploadVideo(file: File, onProgress?: (pct: number) => void) {
+    return new Promise<{ video_path: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const fd = new FormData();
+      fd.append("video", file);
+      xhr.open("POST", `${API_BASE}/media/upload`);
+      if (onProgress) xhr.upload.onprogress = (e) => onProgress(e.loaded / e.total * 100);
+      xhr.onload = () => {
+        if (xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+        else reject(new Error(JSON.parse(xhr.responseText).error));
+      };
+      xhr.onerror = () => reject(new Error("Upload failed"));
+      xhr.send(fd);
+    });
+  },
+
+  clipFileUrl(taskId: string, clipId: string) {
+    return `${API_BASE}/tasks/${taskId}/clips/${clipId}/file`;
+  },
+
+  clipExportUrl(taskId: string, clipId: string, preset: string) {
+    return `${API_BASE}/tasks/${taskId}/clips/${clipId}/export?preset=${preset}`;
+  },
+
+  async getCaptionTemplates() {
+    const r = await fetch(`${API_BASE}/media/caption-templates`);
+    return r.json();
+  },
+
+  async getBrollStatus() {
+    const r = await fetch(`${API_BASE}/media/broll/status`);
+    return r.json();
+  },
+};
