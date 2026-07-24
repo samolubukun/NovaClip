@@ -1,0 +1,26 @@
+[workspace]
+members = ["crates/api", "crates/worker", "crates/db"]
+resolver = "2"
+
+[workspace.dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["io"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono", "json", "migrate", "macros"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
+url = { version = "2" }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenv = "0.15"
+anyhow = "1"
+thiserror = "2"
+futures = "0.3"
+bytes = "1"
+async-stream = "0.3"
+zip = "2"

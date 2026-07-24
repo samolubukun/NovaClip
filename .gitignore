@@ -1,0 +1,32 @@
+# Rust / Cargo
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# Database & Storage
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+output/
+temp/
+downloads/
+
+# Environment & Local Configuration
+.env
+.env.local
+*.user
+
+# Antigravity IDE / Brain
+.gemini/
+.agents/
+
+# System Files
+.DS_Store
+Thumbs.db
