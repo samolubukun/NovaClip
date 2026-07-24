@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { History, Zap, Settings } from "lucide-react";
+import { History, Zap, Settings, Github } from "lucide-react";
 import { SettingsModal } from "./SettingsModal";
 
 export default function Nav() {
@@ -35,8 +35,8 @@ export default function Nav() {
             <Link to="/history" className="btn btn-ghost btn-sm">
               <History size={15} /> History
             </Link>
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm">
-              GitHub
+            <a href="https://github.com/samolubukun/NovaClip" target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <Github size={15} /> GitHub
             </a>
           </div>
         </div>
