@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///app/data/novaclip.db
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      OUTPUT_DIR: /app/outputs
+      TEMP_DIR: /app/temp
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      PORT: 8000
+    volumes:
+      - sqlite_data:/app/data
+      - media_data:/app/outputs
+      - temp_data:/app/temp
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  sqlite_data:
+  media_data:
+  temp_data:
