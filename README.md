@@ -4,16 +4,17 @@
 
 # **NovaClip**
 
-### **AI-Powered Viral Video Clip Generator & Automation Engine**
+### **AI-Powered Viral Video Clip Generator & Faceless AI Creator Engine**
 
-Turn long podcasts, YouTube videos, and live streams into high-converting vertical short clips with AI virality scoring, custom typography, brand watermarks, and multi-color animated karaoke captions.
+Turn long podcasts, YouTube videos, and live streams into high-converting vertical short clips — OR generate complete faceless AI videos from scripts/topics with automated stock media scraping, multi-provider neural voiceovers, custom typography, brand watermarks, and multi-color animated karaoke captions.
 
 [![Rust](https://img.shields.io/badge/Rust-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Axum](https://img.shields.io/badge/Axum-000000?style=for-the-badge&logo=rust&logoColor=orange)](https://github.com/tokio-rs/axum)
 [![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Gemini AI](https://img.shields.io/badge/Gemini_AI-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![Gemini AI](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![OpenRouter](https://img.shields.io/badge/OpenRouter_Free_Models-6566F1?style=for-the-badge&logo=openai&logoColor=white)](https://openrouter.ai/)
 [![Deepgram](https://img.shields.io/badge/Deepgram_Nova--3-13EF95?style=for-the-badge&logo=deepgram&logoColor=black)](https://deepgram.com/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
@@ -25,6 +26,10 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 
 ## Features
 
+- **Nova Studio — Faceless AI Creator**: Generate complete faceless videos from scripts or AI topics using sentence-level visual keyword extraction.
+- **AI Brains (Gemini 3.1 Flash-Lite & OpenRouter)**: Script generation and virality analysis powered by Gemini 3.1 Flash-Lite (Default), Gemini 3.1 Pro, or OpenRouter free models (`meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free`).
+- **Multi-Source Stock Media Scrapers**: Automated HD video and photo scraping with multi-platform fallback across **Pinterest Video & Photo Scraper** (Playwright + yt-dlp), **Pexels API**, and **Pixabay API**.
+- **Multi-Provider Neural Voiceovers (TTS)**: Choose between **Microsoft Edge-TTS** (free, 10+ languages), **ElevenLabs API** (cloned & custom voices), or **Deepgram Aura TTS**.
 - **AI Virality Scoring**: Gemini AI evaluates hooks, retention probability, emotional peaks, and shareability for every extracted segment.
 - **Nova-3 Karaoke Subtitles**: Deepgram word-level timestamps drive multi-color active word-pop subtitle animations.
 - **Font & Typography Library**: Full studio typography control with 12 popular fonts (The Bold Font, TikTok Sans, Montserrat, Impact, Bebas Neue, Inter, etc.) and custom font size slider.
@@ -39,7 +44,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 - **AI Edit Chat**: Natural-language editing commands on generated clips (trim, delete, reframe, captions, translate, memes, merge) via a floating chat panel on the Task page.
 - **Smart Multi-Aspect Cropping**: Auto-detects and centers active speakers for 9:16 vertical shorts, 1:1 square posts, or 16:9 widescreen clips.
 - **Zip Export**: Export individual clips or download all generated clips in a single `.zip` package.
-- **100% BYOK (Bring Your Own Key)**: Local browser storage for Gemini & Deepgram keys. Runs 100% offline-compatible for desktop & local deployment.
+- **100% BYOK (Bring Your Own Key)**: Local browser storage for Gemini, OpenRouter, ElevenLabs, Deepgram, Pexels, and Pixabay keys. Runs 100% offline-compatible for desktop & local deployment.
 
 ---
 
