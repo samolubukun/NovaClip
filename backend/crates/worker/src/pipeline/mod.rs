@@ -5,8 +5,10 @@ pub mod dedup;
 pub mod clip;
 pub mod caption;
 pub mod crop;
+pub mod reframe;
+pub mod originality;
+pub mod translate;
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,12 @@ pub struct PipelineConfig {
     pub pause_threshold_ms: i32,
     pub remove_filler_words: bool,
     pub filtered_words: Vec<String>,
+    pub auto_vertical_reframe: bool,
+    pub reframe_preset: String,
+    pub reframe_frame_skip: u32,
+    pub originality_boost: String,
+    pub translate_language: String,
+    pub giphy_api_key: Option<String>,
     pub output_dir: String,
     pub temp_dir: String,
     pub gemini_api_key: String,
