@@ -2,7 +2,7 @@
 use serde_json::{json, Value};
 use tracing::info;
 use crate::pipeline::{TranscriptAnalysis, TranscriptSegment, ViralityScore};
-use crate::pipeline::transcribe::TimestampedTranscript;
+
 
 const VIRALITY_SYSTEM_PROMPT: &str = r#"You are an expert transcript analyst for short-form video editing.
 

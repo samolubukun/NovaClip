@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use tracing::{info, warn};
+use tracing::info;
 
 /// Download a YouTube video using yt-dlp and return the local file path.
 pub async fn download_youtube(url: &str, temp_dir: &str) -> Result<PathBuf> {

@@ -1,7 +1,5 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use tracing::info;
-use crate::pipeline::dedup::timestamp_to_seconds;
 use crate::pipeline::transcribe::DeepgramWord;
 
 /// Caption template styles
@@ -257,11 +255,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     // Word-by-word karaoke captions
     let mut line_words: Vec<&DeepgramWord> = Vec::new();
-    let mut line_start = 0.0f64;
-
     for word in clip_words {
         let ws = word.start - clip_start_secs;
-        let we = word.end - clip_start_secs;
         if ws < 0.0 { continue; }
 
         line_words.push(word);

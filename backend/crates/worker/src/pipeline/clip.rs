@@ -24,6 +24,7 @@ pub fn build_crop_filter(aspect_ratio: &str) -> String {
 }
 
 /// Extract a clip from the source video using FFmpeg
+/// If `skip_crop` is true, extracts at original aspect ratio (no crop filter).
 pub async fn extract_clip(
     source: &Path,
     output_dir: &Path,
@@ -32,6 +33,7 @@ pub async fn extract_clip(
     end_time: &str,
     aspect_ratio: &str,
     task_id: &str,
+    skip_crop: bool,
 ) -> Result<PathBuf> {
     tokio::fs::create_dir_all(output_dir).await?;
 
@@ -48,8 +50,6 @@ pub async fn extract_clip(
 
     info!("Extracting clip {} [{} - {}] ({:.1}s)", clip_index + 1, start_time, end_time, duration);
 
-    let crop_filter = build_crop_filter(aspect_ratio);
-
     let mut args: Vec<String> = vec![
         "-y".into(),
         "-ss".into(), start_secs.to_string(),
@@ -57,8 +57,11 @@ pub async fn extract_clip(
         "-t".into(), duration.to_string(),
     ];
 
-    if !crop_filter.is_empty() {
-        args.extend(["-vf".into(), crop_filter]);
+    if !skip_crop {
+        let crop_filter = build_crop_filter(aspect_ratio);
+        if !crop_filter.is_empty() {
+            args.extend(["-vf".into(), crop_filter]);
+        }
     }
 
     args.extend([

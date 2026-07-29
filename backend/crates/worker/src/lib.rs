@@ -72,15 +72,18 @@ pub async fn check_cancelled(db: &DbPool, task_id: &str) -> bool {
 }
 
 async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
-    use pipeline::{
-        analyze::analyze_transcript,
-        caption::{burn_captions, get_caption_style, get_clip_words},
-        clip::extract_clip,
-        crop::output_dimensions,
-        dedup::{dedup_segments, timestamp_to_seconds},
-        download::{download_youtube, extract_audio, get_video_duration, resolve_upload_path},
-        transcribe::{build_transcript_for_prompt, transcribe_with_deepgram},
-    };
+use pipeline::{
+    analyze::analyze_transcript,
+    caption::{burn_captions, get_caption_style, get_clip_words},
+    clip::{build_crop_filter, extract_clip},
+    crop::output_dimensions,
+    reframe::apply_vertical_reframe,
+    originality::apply_originality_boost,
+    translate::translate_words,
+    dedup::{dedup_segments, timestamp_to_seconds},
+    download::{download_youtube, extract_audio, get_video_duration, resolve_upload_path},
+    transcribe::{build_transcript_for_prompt, transcribe_with_deepgram},
+};
 
     let task_id_str = task_id.to_string();
 
@@ -122,6 +125,13 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
         cut_long_pauses: task.cut_long_pauses,
         pause_threshold_ms: task.pause_threshold_ms,
         remove_filler_words: task.remove_filler_words,
+        auto_vertical_reframe: task.auto_vertical_reframe,
+        reframe_preset: task.reframe_preset.clone(),
+        reframe_frame_skip: task.reframe_frame_skip.max(1) as u32,
+        originality_boost: task.originality_boost.clone(),
+        translate_language: task.translate_language.clone(),
+        giphy_api_key: std::env::var("GIPHY_API_KEY").ok().filter(|s| !s.is_empty())
+            .or_else(|| task.giphy_api_key.clone().filter(|s| !s.trim().is_empty())),
         filtered_words: serde_json::from_str::<Vec<String>>(&task.filtered_words)
             .unwrap_or_default(),
         output_dir: std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "outputs".into()),
@@ -210,6 +220,8 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
     );
     let total_clips = deduped.len();
 
+    let use_reframe = cfg.auto_vertical_reframe && cfg.aspect_ratio == "9:16";
+
     for (i, seg) in deduped.iter().enumerate() {
         if check_cancelled(&db, &task_id_str).await {
             return Ok(());
@@ -219,6 +231,7 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
         let msg = format!("Rendering clip {} of {}...", i + 1, total_clips);
         emit_progress(&db, &task_id_str, pct, &msg, "processing").await;
 
+        // Extract clip (raw if reframe is on, cropped otherwise)
         let raw_clip_path = extract_clip(
             &video_path,
             &output_dir,
@@ -227,17 +240,75 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
             &seg.end_time,
             &cfg.aspect_ratio,
             &task_id.to_string(),
+            use_reframe,
         )
         .await?;
 
+        // Auto vertical reframe step (AI subject tracking)
+        let reframed_path = if use_reframe {
+            let reframe_output = output_dir.join(format!("reframe_{}_{}.mp4", i + 1, &task_id_str[..8]));
+            match apply_vertical_reframe(&raw_clip_path, &reframe_output, &cfg.reframe_preset, cfg.reframe_frame_skip).await {
+                Ok(()) => {
+                    tokio::fs::remove_file(&raw_clip_path).await.ok();
+                    reframe_output
+                }
+                Err(e) => {
+                    warn!("Vertical reframe failed: {} — falling back to center crop", e);
+                    let fallback = output_dir.join(format!("fallback_{}_{}.mp4", i + 1, &task_id_str[..8]));
+                    let crop_filter = build_crop_filter(&cfg.aspect_ratio);
+                    if crop_filter.is_empty() {
+                        raw_clip_path
+                    } else {
+                        let status = tokio::process::Command::new("ffmpeg")
+                            .args([
+                                "-y", "-i",
+                                raw_clip_path.to_str().unwrap(),
+                                "-vf", &crop_filter,
+                                "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+                                "-pix_fmt", "yuv420p",
+                                "-c:a", "copy",
+                                fallback.to_str().unwrap(),
+                            ])
+                            .status()
+                            .await;
+                        match status {
+                            Ok(s) if s.success() => {
+                                tokio::fs::remove_file(&raw_clip_path).await.ok();
+                                fallback
+                            }
+                            _ => {
+                                warn!("Fallback crop also failed — using raw clip");
+                                raw_clip_path
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            raw_clip_path
+        };
+
+        // Burn captions on the (possibly reframed) clip
+        let clip_for_captions = reframed_path;
+        let start_secs = timestamp_to_seconds(&seg.start_time);
+        let end_secs = timestamp_to_seconds(&seg.end_time);
+        let clip_word_refs = get_clip_words(&transcript.words, start_secs, end_secs);
+        let mut caption_owned: Vec<crate::pipeline::transcribe::DeepgramWord> = clip_word_refs.iter().map(|w| (*w).clone()).collect();
+
+        // Translate captions if language is set
+        if !cfg.translate_language.is_empty() && cfg.add_subtitles {
+            match translate_words(&clip_word_refs, &cfg.translate_language, &cfg.gemini_model, &cfg.gemini_api_key).await {
+                Ok(translated) => caption_owned = translated,
+                Err(e) => warn!("Translation failed: {} — using original", e),
+            }
+        }
+        let caption_words: Vec<&crate::pipeline::transcribe::DeepgramWord> = caption_owned.iter().collect();
+
         let final_path = if cfg.add_subtitles {
-            let start_secs = timestamp_to_seconds(&seg.start_time);
-            let end_secs = timestamp_to_seconds(&seg.end_time);
-            let clip_words = get_clip_words(&transcript.words, start_secs, end_secs);
             match burn_captions(
-                &raw_clip_path,
+                &clip_for_captions,
                 &output_dir,
-                &clip_words,
+                &caption_words,
                 start_secs,
                 &caption_style,
                 seg.hook_title.as_deref(),
@@ -248,19 +319,36 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
             .await
             {
                 Ok(p) => {
-                    tokio::fs::remove_file(&raw_clip_path).await.ok();
+                    tokio::fs::remove_file(&clip_for_captions).await.ok();
                     p
                 }
                 Err(e) => {
                     warn!("Caption burn failed: {} — using raw clip", e);
-                    raw_clip_path
+                    clip_for_captions
                 }
             }
         } else {
-            raw_clip_path
+            clip_for_captions
         };
 
-        let filename = final_path
+        // Originality boost (brightness/contrast/saturation adjustments)
+        let boosted_path = if cfg.originality_boost != "none" {
+            let boost_output = output_dir.join(format!("boost_{}_{}.mp4", i + 1, &task_id_str[..8]));
+            match apply_originality_boost(&final_path, &boost_output, &cfg.originality_boost).await {
+                Ok(()) => {
+                    tokio::fs::remove_file(&final_path).await.ok();
+                    boost_output
+                }
+                Err(e) => {
+                    warn!("Originality boost failed: {} — skipping", e);
+                    final_path
+                }
+            }
+        } else {
+            final_path
+        };
+
+        let filename = boosted_path
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
@@ -280,7 +368,7 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
         .bind(&task_id_str)
         .bind(i as i32)
         .bind(&filename)
-        .bind(final_path.to_str().unwrap())
+        .bind(boosted_path.to_str().unwrap())
         .bind(&seg.start_time)
         .bind(&seg.end_time)
         .bind(duration_secs)
