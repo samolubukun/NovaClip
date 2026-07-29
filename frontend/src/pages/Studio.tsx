@@ -142,10 +142,10 @@ export default function Studio() {
     <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "1.5rem 1rem" }}>
       {/* Header Banner */}
       <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,224,0,0.1)", border: "1px solid rgba(255,224,0,0.3)", padding: "0.35rem 0.9rem", borderRadius: "20px", color: "var(--accent)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,224,0,0.1)", border: "1px solid rgba(255,224,0,0.3)", padding: "0.4rem 1rem", borderRadius: "20px", color: "var(--accent)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1.15rem" }}>
           <Film size={14} /> Nova Studio — Faceless AI Creator
         </div>
-        <h1 style={{ fontSize: "2.2rem", fontWeight: 900, color: "#fff", marginBottom: "0.4rem" }}>
+        <h1 style={{ fontSize: "2.25rem", fontWeight: 900, color: "#fff", marginBottom: "0.6rem" }}>
           Generate Viral Faceless Videos in Seconds
         </h1>
         <p style={{ color: "#aaa", fontSize: "0.92rem", maxWidth: "680px", margin: "0 auto" }}>
