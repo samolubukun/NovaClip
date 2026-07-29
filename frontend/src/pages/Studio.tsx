@@ -30,7 +30,7 @@ const TTS_PROVIDERS = [
 ];
 
 const SCRAPER_SOURCES = [
-  { id: "pinterest", label: "Pinterest Video & Photo Scraper (World's First!)", badge: "Free" },
+  { id: "pinterest", label: "Pinterest Video & Photo Scraper", badge: "Free" },
   { id: "pexels", label: "Pexels Stock API", badge: "API" },
   { id: "pixabay", label: "Pixabay Stock API", badge: "API" },
 ];
