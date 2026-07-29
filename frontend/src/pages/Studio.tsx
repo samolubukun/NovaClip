@@ -142,7 +142,7 @@ export default function Studio() {
     <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "1.5rem 1rem" }}>
       {/* Header Banner */}
       <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,224,0,0.1)", border: "1px solid rgba(255,224,0,0.3)", padding: "0.4rem 1rem", borderRadius: "20px", color: "var(--accent)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1.15rem" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,224,0,0.1)", border: "1px solid rgba(255,224,0,0.3)", padding: "0.4rem 1rem", borderRadius: "20px", color: "var(--accent)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "2.3rem" }}>
           <Film size={14} /> Nova Studio — Faceless AI Creator
         </div>
         <h1 style={{ fontSize: "clamp(1.8rem, 3.8vw, 3.2rem)", fontWeight: 900, lineHeight: 1.1, marginBottom: "0.75rem", letterSpacing: "-0.03em", color: "#fff" }}>
