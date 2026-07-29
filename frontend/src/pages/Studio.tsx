@@ -141,14 +141,14 @@ export default function Studio() {
   return (
     <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "1.5rem 1rem" }}>
       {/* Header Banner */}
-      <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+      <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(255,224,0,0.1)", border: "1px solid rgba(255,224,0,0.3)", padding: "0.4rem 1rem", borderRadius: "20px", color: "var(--accent)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1.15rem" }}>
           <Film size={14} /> Nova Studio — Faceless AI Creator
         </div>
-        <h1 style={{ fontSize: "2.25rem", fontWeight: 900, color: "#fff", marginBottom: "0.6rem" }}>
-          Generate Viral Faceless Videos in Seconds
+        <h1 style={{ fontSize: "clamp(1.8rem, 3.8vw, 3.2rem)", fontWeight: 900, lineHeight: 1.1, marginBottom: "0.75rem", letterSpacing: "-0.03em", color: "#fff" }}>
+          Generate Viral <span style={{ color: "var(--accent)", textShadow: "0 0 35px rgba(255,224,0,0.3)" }}>Faceless AI Videos</span>
         </h1>
-        <p style={{ color: "#aaa", fontSize: "0.92rem", maxWidth: "680px", margin: "0 auto" }}>
+        <p style={{ fontSize: "1.05rem", color: "#a1a1aa", maxWidth: "680px", margin: "0 auto" }}>
           Turn scripts or AI topics into complete short-form clips with automated stock media scraping, multi-provider neural voiceovers, and animated karaoke captions.
         </p>
       </div>
