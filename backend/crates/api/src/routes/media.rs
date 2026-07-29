@@ -25,7 +25,7 @@ async fn get_caption_templates() -> Json<Value> {
     }))
 }
 
-async fn get_fonts(State(state): State<AppState>) -> Json<Value> {
+async fn get_fonts(State(_state): State<AppState>) -> Json<Value> {
     Json(json!({
         "fonts": [
             {"name":"THEBOLDFONT","display_name":"The Bold Font","format":"ttf"},

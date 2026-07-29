@@ -61,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::tasks_router())
         .merge(routes::clips_router())
         .merge(routes::media_router())
+        .merge(routes::ai_edit_router())
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);

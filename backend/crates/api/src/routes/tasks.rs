@@ -1,22 +1,21 @@
+use std::collections::HashMap;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Response, Sse},
+    response::{Response, Sse},
     routing::{delete, get, patch, post},
     Json, Router,
 };
 use futures::stream::Stream;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::time::Duration;
-use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use axum::response::sse::{Event, KeepAlive};
 use crate::state::AppState;
-use novaclip_db::{CreateTask, GeneratedClip, Task, TaskSummary};
+use novaclip_db::{GeneratedClip, Task};
 
 pub fn tasks_router() -> Router<AppState> {
     Router::new()
@@ -32,6 +31,7 @@ pub fn tasks_router() -> Router<AppState> {
         .route("/tasks/{id}/clips/{clip_id}/regenerate", post(regenerate_clip))
         .route("/tasks/{id}/clips/{clip_id}/captions", patch(update_captions))
         .route("/tasks/{id}/clips/merge", post(merge_clips))
+        .route("/tasks/ai-prompt", post(ai_prompt_handler))
 }
 
 #[derive(Deserialize)]
@@ -108,6 +108,12 @@ struct CreateTaskRequest {
     filtered_words: Option<Vec<String>>,
     gemini_api_key: Option<String>,
     deepgram_api_key: Option<String>,
+    auto_vertical_reframe: Option<bool>,
+    reframe_preset: Option<String>,
+    reframe_frame_skip: Option<i32>,
+    originality_boost: Option<String>,
+    translate_language: Option<String>,
+    giphy_api_key: Option<String>,
 }
 
 fn validate_aspect_ratio(ar: &str) -> &str {
@@ -157,14 +163,20 @@ async fn create_task(
     let include_broll = if req.include_broll.unwrap_or(false) { 1i32 } else { 0i32 };
     let cut_long_pauses = if req.cut_long_pauses.unwrap_or(false) { 1i32 } else { 0i32 };
     let remove_filler_words = if req.remove_filler_words.unwrap_or(false) { 1i32 } else { 0i32 };
+    let auto_vertical_reframe = if req.auto_vertical_reframe.unwrap_or(false) { 1i32 } else { 0i32 };
+    let reframe_preset = req.reframe_preset.clone().unwrap_or_else(|| "talking_head".into());
+    let reframe_frame_skip = req.reframe_frame_skip.unwrap_or(1).clamp(1, 10);
+    let originality_boost = req.originality_boost.clone().unwrap_or_else(|| "none".into());
+    let translate_language = req.translate_language.clone().unwrap_or_default();
 
     sqlx::query(
         r#"INSERT INTO tasks
            (id, source_url, source_type, aspect_ratio, num_clips, font_family, font_size,
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
-            gemini_api_key, deepgram_api_key)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+            gemini_api_key, deepgram_api_key, auto_vertical_reframe, reframe_preset,
+            reframe_frame_skip, originality_boost, translate_language, giphy_api_key)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
@@ -184,6 +196,12 @@ async fn create_task(
     .bind(&filtered_words_json)
     .bind(req.gemini_api_key)
     .bind(req.deepgram_api_key)
+    .bind(auto_vertical_reframe)
+    .bind(&reframe_preset)
+    .bind(reframe_frame_skip)
+    .bind(&originality_boost)
+    .bind(&translate_language)
+    .bind(req.giphy_api_key)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -239,6 +257,11 @@ async fn get_task(
         "add_subtitles": task.add_subtitles,
         "include_broll": task.include_broll,
         "processing_mode": task.processing_mode,
+        "auto_vertical_reframe": task.auto_vertical_reframe,
+        "reframe_preset": task.reframe_preset,
+        "originality_boost": task.originality_boost,
+
+        "translate_language": task.translate_language,
         "stage_timings": stage_timings,
         "error_message": task.error_message,
         "created_at": task.created_at,
@@ -274,6 +297,115 @@ async fn update_task(
     Ok(Json(json!({"message": "Updated"})))
 }
 
+const AI_PROMPT_SYSTEM_PROMPT: &str = r##"You are a task parameter parser for a video clipping app called NovaClip. Given a user instruction and a video URL, extract the user's intent and return ONLY valid JSON with these fields (all optional, use defaults if not specified):
+
+{
+  "num_clips": 5,
+  "aspect_ratio": "9:16",
+  "add_subtitles": true,
+  "auto_vertical_reframe": false,
+  "reframe_preset": "talking_head",
+  "caption_template": "default",
+  "originality_boost": "none",
+  "auto_memes": false,
+  "translate_language": "",
+  "reasoning": "brief explanation of what the user asked for"
+}
+
+Rules:
+- num_clips: 1-30. Default 5.
+- aspect_ratio: "9:16", "1:1", "16:9", "original". Default "9:16".
+- reframe_preset: "talking_head", "sports", "pets", "cars". Only used if auto_vertical_reframe is true.
+- caption_template: "default", "bold", "vibrant", "tiktok", "neon", "podcast", "minimal", "cinematic", "cyber", "clean"
+- originality_boost: "none", "light", "balanced", "strong"
+- translate_language: "" (none), "ko", "ja", "zh", "es", "fr", "de", "pt"
+- "add_subtitles": true unless user says no captions
+- "auto_memes": true only if user explicitly asks for memes/reactions/GIFs
+- "auto_vertical_reframe": true if user mentions vertical, vertical crop, subject tracking, or reframe
+
+Return ONLY valid JSON, no markdown, no explanations."##;
+
+#[derive(Deserialize)]
+struct AiPromptRequest {
+    url: String,
+    instruction: String,
+    gemini_api_key: Option<String>,
+}
+
+async fn ai_prompt_handler(
+    State(state): State<AppState>,
+    Json(req): Json<AiPromptRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let gemini_key = req.gemini_api_key
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| std::env::var("GEMINI_API_KEY").ok().filter(|k| !k.trim().is_empty()))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(json!({"error": "Gemini API key required"}))))?;
+
+    let gemini_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.1-flash-lite".into());
+    let user_prompt = format!("Video URL: {}\nUser instruction: {}", req.url, req.instruction);
+
+    let body = json!({
+        "systemInstruction": {"parts": [{"text": AI_PROMPT_SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024, "responseMimeType": "application/json"}
+    });
+
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", gemini_model, gemini_key);
+    let resp = reqwest::Client::new().post(&url).json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Gemini error: {}", e)}))))?;
+
+    let text = resp.json::<Value>().await
+        .ok().and_then(|r| r.pointer("/candidates/0/content/parts/0/text").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .ok_or_else(|| (StatusCode::BAD_GATEWAY, Json(json!({"error": "Empty Gemini response"}))))?;
+
+    let clean = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+    let params: Value = serde_json::from_str(clean)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Parse error: {}", e)}))))?;
+
+    // Determine source type
+    let source_type = if req.url.contains("youtube.com") || req.url.contains("youtu.be") { "youtube" }
+        else if req.url.starts_with("upload://") { "upload" } else { "video_url" };
+
+    let task_id = Uuid::new_v4();
+    let num_clips = params["num_clips"].as_i64().unwrap_or(5).clamp(1, 30) as i32;
+    let aspect_ratio = match params["aspect_ratio"].as_str().unwrap_or("9:16") { "1:1" => "1:1", "16:9" => "16:9", "original" => "original", _ => "9:16" };
+    let add_subtitles = if params["add_subtitles"].as_bool().unwrap_or(true) { 1i32 } else { 0i32 };
+    let auto_vertical_reframe = if params["auto_vertical_reframe"].as_bool().unwrap_or(false) { 1i32 } else { 0i32 };
+    let reframe_preset = params["reframe_preset"].as_str().unwrap_or("talking_head");
+    let caption_template = params["caption_template"].as_str().unwrap_or("default");
+    let originality_boost = params["originality_boost"].as_str().unwrap_or("none");
+    let translate_language = params["translate_language"].as_str().unwrap_or("");
+
+    sqlx::query(
+        r#"INSERT INTO tasks
+           (id, source_url, source_type, aspect_ratio, num_clips, font_family, font_size,
+            font_color, caption_template, add_subtitles, include_broll, processing_mode,
+            cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
+            gemini_api_key, auto_vertical_reframe, reframe_preset, reframe_frame_skip,
+            originality_boost, translate_language)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+    )
+    .bind(task_id.to_string())
+    .bind(&req.url).bind(source_type).bind(aspect_ratio).bind(num_clips)
+    .bind("THEBOLDFONT").bind(32).bind("#FFFFFF").bind(caption_template)
+    .bind(add_subtitles).bind(0).bind("fast").bind(0).bind(900).bind(0).bind("[]")
+    .bind(&gemini_key)
+    .bind(auto_vertical_reframe).bind(reframe_preset).bind(1)
+    .bind(originality_boost).bind(translate_language)
+    .execute(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    state.job_tx.send(task_id).await.ok();
+
+    Ok(Json(json!({
+        "task_id": task_id,
+        "message": "Task created from AI prompt",
+        "params": params,
+    })))
+}
+
 /// SSE progress stream — polls the tasks table every second instead of Redis pub/sub.
 /// Latency: ≤1s per update (acceptable for long-running video processing).
 async fn task_progress_sse(
@@ -290,7 +422,7 @@ async fn task_progress_sse(
         loop {
             interval.tick().await;
 
-            let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
+    let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
                 .bind(&id_str)
                 .fetch_optional(&state.db)
                 .await;
@@ -358,7 +490,7 @@ async fn resume_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
+    let _task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
         .bind(id.to_string()).fetch_optional(&state.db).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))))?;
@@ -387,6 +519,10 @@ struct ApplySettingsRequest {
     pause_threshold_ms: Option<i32>,
     remove_filler_words: Option<bool>,
     filtered_words: Option<Vec<String>>,
+    auto_vertical_reframe: Option<bool>,
+    reframe_preset: Option<String>,
+    originality_boost: Option<String>,
+    translate_language: Option<String>,
 }
 
 async fn apply_settings(
@@ -406,6 +542,10 @@ async fn apply_settings(
             cut_long_pauses = COALESCE(?, cut_long_pauses),
             pause_threshold_ms = COALESCE(?, pause_threshold_ms),
             remove_filler_words = COALESCE(?, remove_filler_words),
+            auto_vertical_reframe = COALESCE(?, auto_vertical_reframe),
+            reframe_preset = COALESCE(?, reframe_preset),
+            originality_boost = COALESCE(?, originality_boost),
+            translate_language = COALESCE(?, translate_language),
             updated_at = datetime('now')
             WHERE id = ?"#
     )
@@ -418,6 +558,10 @@ async fn apply_settings(
     .bind(req.cut_long_pauses)
     .bind(req.pause_threshold_ms)
     .bind(req.remove_filler_words)
+    .bind(req.auto_vertical_reframe)
+    .bind(req.reframe_preset)
+    .bind(req.originality_boost)
+    .bind(req.translate_language)
     .bind(id.to_string())
     .execute(&state.db)
     .await
@@ -497,16 +641,16 @@ async fn trim_clip(
 struct SplitRequest { split_time: f64 }
 
 async fn split_clip(
-    State(state): State<AppState>,
-    Path((task_id, clip_id)): Path<(Uuid, Uuid)>,
+    State(_state): State<AppState>,
+    Path((_task_id, _clip_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<SplitRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     Ok(Json(json!({"message": "Split queued", "split_time": req.split_time})))
 }
 
 async fn regenerate_clip(
-    State(state): State<AppState>,
-    Path((task_id, clip_id)): Path<(Uuid, Uuid)>,
+    State(_state): State<AppState>,
+    Path((_task_id, _clip_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     Ok(Json(json!({"message": "Regenerate queued"})))
 }
@@ -519,9 +663,9 @@ struct CaptionsRequest {
 }
 
 async fn update_captions(
-    State(state): State<AppState>,
-    Path((task_id, clip_id)): Path<(Uuid, Uuid)>,
-    Json(req): Json<CaptionsRequest>,
+    State(_state): State<AppState>,
+    Path((_task_id, _clip_id)): Path<(Uuid, Uuid)>,
+    Json(_req): Json<CaptionsRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     Ok(Json(json!({"message": "Captions updated"})))
 }
@@ -530,8 +674,8 @@ async fn update_captions(
 struct MergeRequest { clip_ids: Vec<Uuid> }
 
 async fn merge_clips(
-    State(state): State<AppState>,
-    Path(task_id): Path<Uuid>,
+    State(_state): State<AppState>,
+    Path(_task_id): Path<Uuid>,
     Json(req): Json<MergeRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     Ok(Json(json!({"message": "Merge queued", "clip_ids": req.clip_ids})))
