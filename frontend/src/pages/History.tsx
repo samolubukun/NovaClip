@@ -105,8 +105,44 @@ export default function History() {
             </div>
           </div>
 
-          {/* Search Input (Serivia Inspired) */}
-          <div style={{ position: "relative", minWidth: "280px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {/* Daily Audio Overview (TTS Dashboard Briefing Button) */}
+            <button
+              onClick={() => {
+                if ('speechSynthesis' in window) {
+                  window.speechSynthesis.cancel();
+                  const completed = tasks.filter(t => t.status === "completed").length;
+                  const totalClips = tasks.reduce((sum, t) => sum + (t.clips_count || 0), 0);
+                  const text = `NovaClip Daily Audio Briefing. You currently have ${tasks.length} total video tasks in your history dashboard. ${completed} tasks are fully completed, producing a total of ${totalClips} viral video clips ready for download. Have a productive day generating clips!`;
+                  const msg = new SpeechSynthesisUtterance(text);
+                  msg.rate = 1.0;
+                  msg.pitch = 1.0;
+                  window.speechSynthesis.speak(msg);
+                  toast.success("Playing Daily Audio Briefing 🎙️");
+                } else {
+                  toast.error("Speech synthesis not supported in browser");
+                }
+              }}
+              className="btn btn-secondary btn-sm"
+              style={{
+                background: "rgba(255, 224, 0, 0.12)",
+                border: "1px solid rgba(255, 224, 0, 0.3)",
+                color: "var(--accent)",
+                fontWeight: 800,
+                fontSize: "0.78rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                borderRadius: "10px",
+                padding: "0.5rem 0.85rem",
+                cursor: "pointer",
+              }}
+            >
+              <Play size={14} /> Daily Audio Overview
+            </button>
+
+            {/* Search Input (Serivia Inspired) */}
+            <div style={{ position: "relative", minWidth: "240px" }}>
             <Search size={16} style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "#666" }} />
             <input
               type="text"
