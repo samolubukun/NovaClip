@@ -1,4 +1,4 @@
-﻿pub mod download;
+pub mod download;
 pub mod transcribe;
 pub mod analyze;
 pub mod dedup;
@@ -8,6 +8,9 @@ pub mod crop;
 pub mod reframe;
 pub mod originality;
 pub mod translate;
+pub mod studio_llm;
+pub mod tts;
+pub mod scraper;
 
 use serde::{Deserialize, Serialize};
 

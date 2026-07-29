@@ -1,4 +1,4 @@
-﻿use anyhow::{Context, Result};
+use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use tracing::info;
 use crate::pipeline::{TranscriptAnalysis, TranscriptSegment, ViralityScore};
@@ -67,7 +67,12 @@ pub async fn analyze_transcript(
     model: &str,
     api_key: &str,
 ) -> Result<TranscriptAnalysis> {
-    info!("Analyzing transcript with Gemini {} for {} clips", model, num_clips);
+    let target_model = if model.is_empty() || model == "gemini-1.5-flash" || model == "gemini-2.5-flash-lite" {
+        "gemini-3.1-flash-lite"
+    } else {
+        model
+    };
+    info!("Analyzing transcript with Gemini {} for {} clips", target_model, num_clips);
 
     let user_prompt = format!(
         "Analyze this transcript and find the {} most viral clip candidates.\n\nTranscript:\n{}",
@@ -91,7 +96,7 @@ pub async fn analyze_transcript(
 
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model, api_key
+        target_model, api_key
     );
 
     let client = reqwest::Client::new();

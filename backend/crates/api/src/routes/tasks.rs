@@ -20,6 +20,7 @@ use novaclip_db::{GeneratedClip, Task};
 pub fn tasks_router() -> Router<AppState> {
     Router::new()
         .route("/tasks", get(list_tasks).post(create_task))
+        .route("/studio/generate_script", post(generate_studio_script))
         .route("/tasks/{id}", get(get_task).delete(delete_task).patch(update_task))
         .route("/tasks/{id}/progress", get(task_progress_sse))
         .route("/tasks/{id}/download-all", get(download_all_clips))
@@ -728,4 +729,34 @@ async fn download_all_clips(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok(response)
+}
+
+#[derive(Deserialize)]
+struct StudioScriptReq {
+    topic: String,
+    vibe: Option<String>,
+    llm_provider: Option<String>,
+    api_key: Option<String>,
+}
+
+async fn generate_studio_script(
+    Json(req): Json<StudioScriptReq>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    use novaclip_worker::pipeline::studio_llm::StudioLlmProcessor;
+
+    let topic = req.topic.trim();
+    if topic.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "topic is required"}))));
+    }
+
+    let vibe = req.vibe.unwrap_or_else(|| "aesthetic".into());
+    let provider = req.llm_provider.unwrap_or_else(|| "gemini-3.1-flash-lite".into());
+    let key = req.api_key.unwrap_or_default();
+
+    let processor = StudioLlmProcessor::new(key.clone(), provider, key);
+    let script = processor.generate_topic_script(topic, &vibe)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({ "script": script })))
 }
