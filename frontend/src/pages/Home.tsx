@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, Minus, Check, Sliders } from "lucide-react";
+import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, Minus, Check, Sliders, Cpu, Wand2, Languages, MessageSquareText, FormInput } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
@@ -40,7 +40,16 @@ export default function Home() {
   const [addSubtitles, setAddSubtitles] = useState(true);
   const [showHookTitle, setShowHookTitle] = useState(false);
   const [mode, setMode] = useState<"fast" | "quality">("fast");
+  const [autoVerticalReframe, setAutoVerticalReframe] = useState(false);
+  const [reframePreset, setReframePreset] = useState("talking_head");
+  const [originalityBoost, setOriginalityBoost] = useState("none");
+  const [customBrightness, setCustomBrightness] = useState(0.05);
+  const [customContrast, setCustomContrast] = useState(1.08);
+  const [customSaturation, setCustomSaturation] = useState(1.10);
+  const [translateLanguage, setTranslateLanguage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inputMode, setInputMode] = useState<"form" | "ai">("form");
+  const [aiInstruction, setAiInstruction] = useState("");
 
   const updateClipCount = (val: number) => {
     const clamped = Math.min(30, Math.max(1, val));
@@ -95,9 +104,39 @@ export default function Home() {
         caption_template: captionTemplate,
         add_subtitles: addSubtitles,
         processing_mode: mode,
+        auto_vertical_reframe: autoVerticalReframe,
+        reframe_preset: reframePreset,
+        originality_boost: originalityBoost === "custom"
+          ? `custom:${customBrightness}:${customContrast}:${customSaturation}`
+          : originalityBoost,
+        translate_language: translateLanguage,
       });
 
       toast.success("Task created! Processing started.");
+      nav(`/task/${result.task_id}`);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create task");
+    } finally {
+      setLoading(false);
+      setUploadPct(0);
+    }
+  };
+
+  const aiSubmit = async () => {
+    if (loading || !aiInstruction.trim()) return;
+    setLoading(true);
+    try {
+      let sourceUrl = "";
+      if (tab === "url") {
+        if (!url.trim()) { toast.error("Enter a YouTube URL"); setLoading(false); return; }
+        sourceUrl = url.trim();
+      } else {
+        if (!file) { toast.error("Select a video file"); setLoading(false); return; }
+        const uploadResult = await api.uploadVideo(file, setUploadPct);
+        sourceUrl = uploadResult.video_path;
+      }
+      const result = await api.aiPrompt(sourceUrl, aiInstruction.trim());
+      toast.success("AI understood! Creating clips...");
       nav(`/task/${result.task_id}`);
     } catch (e: any) {
       toast.error(e.message || "Failed to create task");
@@ -214,8 +253,73 @@ export default function Home() {
               </div>
             )}
 
+            {/* Input Mode Toggle: Form vs AI */}
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", background: "#08080a", borderRadius: "10px", padding: "4px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                onClick={() => setInputMode("form")}
+                style={{
+                  flex: 1, padding: "0.5rem", fontSize: "0.82rem", fontWeight: 700, borderRadius: "8px",
+                  background: inputMode === "form" ? "var(--accent)" : "transparent",
+                  color: inputMode === "form" ? "#000" : "#aaa",
+                  border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
+                }}
+              >
+                <FormInput size={15} /> Form
+              </button>
+              <button
+                onClick={() => setInputMode("ai")}
+                style={{
+                  flex: 1, padding: "0.5rem", fontSize: "0.82rem", fontWeight: 700, borderRadius: "8px",
+                  background: inputMode === "ai" ? "var(--accent)" : "transparent",
+                  color: inputMode === "ai" ? "#000" : "#aaa",
+                  border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
+                }}
+              >
+                <MessageSquareText size={15} /> AI Chat
+              </button>
+            </div>
+
+            {/* AI Chat Mode */}
+            {inputMode === "ai" && (
+              <div style={{ marginBottom: "1.75rem" }}>
+                <div style={{
+                  background: "#08080a", border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "14px", padding: "1rem",
+                }}>
+                  <textarea
+                    value={aiInstruction}
+                    onChange={e => setAiInstruction(e.target.value)}
+                    placeholder='Describe what you want — e.g. "Find the 5 most viral moments, make them vertical with captions, apply a balanced originality boost, and add reaction emojis"'
+                    rows={4}
+                    style={{
+                      width: "100%", background: "transparent", border: "none",
+                      color: "#fff", fontSize: "0.9rem", resize: "none",
+                      outline: "none", fontFamily: "inherit", lineHeight: 1.5,
+                    }}
+                  />
+                </div>
+                <button
+                  className="btn btn-primary btn-lg"
+                  style={{
+                    width: "100%", marginTop: "0.75rem",
+                    background: "var(--accent)", color: "#000", fontWeight: 900,
+                    fontSize: "1rem", borderRadius: "12px", border: "none",
+                    padding: "0.85rem", boxShadow: "0 0 25px rgba(255,224,0,0.25)",
+                    cursor: "pointer", opacity: loading || !aiInstruction.trim() ? 0.5 : 1,
+                  }}
+                  onClick={aiSubmit}
+                  disabled={loading || !aiInstruction.trim()}
+                >
+                  {loading ? <><div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /><span>AI is thinking...</span></>
+                    : <><Sparkles size={18} /> Let AI Create Clips</>}
+                </button>
+              </div>
+            )}
+
             {/* Grid of Control Settings */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.75rem" }}>
+            {inputMode === "form" && <><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.75rem" }}>
               {/* Aspect Ratio */}
               <div>
                 <label style={{ display: "block", fontSize: "0.82rem", color: "#a1a1aa", marginBottom: "0.6rem", fontWeight: 700 }}>Aspect Ratio</label>
@@ -307,7 +411,7 @@ export default function Home() {
             </div>
 
             {/* Toggles Bar */}
-            <div style={{ display: "flex", gap: "2rem", alignItems: "center", marginBottom: "1.5rem", background: "#08080a", padding: "0.75rem 1rem", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap", marginBottom: "1.5rem", background: "#08080a", padding: "0.75rem 1rem", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", cursor: "pointer", fontSize: "0.85rem", color: "#ddd", fontWeight: 600 }}>
                 <input type="checkbox" checked={addSubtitles} onChange={e => setAddSubtitles(e.target.checked)} style={{ accentColor: "var(--accent)", width: 16, height: 16 }} />
                 <span>Burn Karaoke Captions</span>
@@ -318,6 +422,81 @@ export default function Home() {
                   <span>Show Hook Title Header</span>
                 </label>
               )}
+              <div style={{ width: "1px", height: "24px", background: "rgba(255,255,255,0.1)" }} />
+              <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", cursor: "pointer", fontSize: "0.85rem", color: "#ddd", fontWeight: 600 }}>
+                <input type="checkbox" checked={autoVerticalReframe} onChange={e => setAutoVerticalReframe(e.target.checked)} style={{ accentColor: "var(--accent)", width: 16, height: 16 }} />
+                <Cpu size={14} />
+                <span>AI Vertical Reframe</span>
+              </label>
+              {autoVerticalReframe && (
+                <select
+                  value={reframePreset}
+                  onChange={e => setReframePreset(e.target.value)}
+                  style={{
+                    background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)",
+                    borderRadius: "8px", padding: "0.3rem 0.6rem", fontSize: "0.78rem", fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="talking_head">Talking Head</option>
+                  <option value="sports">Sports</option>
+                  <option value="pets">Pets</option>
+                  <option value="cars">Cars</option>
+                </select>
+              )}
+            </div>
+
+            {/* Originality Boost + Translate Section */}
+            <div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap", marginBottom: "1.5rem", background: "#08080a", padding: "0.75rem 1rem", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: "#ddd", fontWeight: 600 }}>
+                <Wand2 size={14} />
+                <span>Originality Boost</span>
+              </label>
+              <select
+                value={originalityBoost === "custom" ? "custom" : originalityBoost}
+                onChange={e => setOriginalityBoost(e.target.value)}
+                style={{
+                  background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: "8px", padding: "0.3rem 0.6rem", fontSize: "0.78rem", fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <option value="none">Off</option>
+                <option value="light">Light</option>
+                <option value="balanced">Balanced</option>
+                <option value="strong">Strong</option>
+                <option value="custom">Custom</option>
+              </select>
+              {originalityBoost === "custom" && (
+                <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                  <label style={{ fontSize: "0.75rem", color: "#aaa" }}>B <input type="range" min="-0.1" max="0.2" step="0.01" value={customBrightness} onChange={e => setCustomBrightness(parseFloat(e.target.value))} style={{ width: 60, verticalAlign: "middle" }} /></label>
+                  <label style={{ fontSize: "0.75rem", color: "#aaa" }}>C <input type="range" min="0.8" max="1.5" step="0.01" value={customContrast} onChange={e => setCustomContrast(parseFloat(e.target.value))} style={{ width: 60, verticalAlign: "middle" }} /></label>
+                  <label style={{ fontSize: "0.75rem", color: "#aaa" }}>S <input type="range" min="0.8" max="2.0" step="0.01" value={customSaturation} onChange={e => setCustomSaturation(parseFloat(e.target.value))} style={{ width: 60, verticalAlign: "middle" }} /></label>
+                </div>
+              )}
+              <div style={{ width: "1px", height: "24px", background: "rgba(255,255,255,0.1)" }} />
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: "#ddd", fontWeight: 600 }}>
+                <Languages size={14} />
+                <span>Translate Captions</span>
+              </label>
+              <select
+                value={translateLanguage}
+                onChange={e => setTranslateLanguage(e.target.value)}
+                style={{
+                  background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: "8px", padding: "0.3rem 0.6rem", fontSize: "0.78rem", fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">Original (no translate)</option>
+                <option value="ko">Korean</option>
+                <option value="ja">Japanese</option>
+                <option value="zh">Chinese</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+              </select>
             </div>
 
             {/* Subtitles & Live Preview */}
@@ -386,7 +565,8 @@ export default function Home() {
                 <><Sparkles size={20} /><span>Generate Viral Clips Now</span></>
               )}
             </button>
-          </motion.div>
+          </>}
+        </motion.div>
         </div>
       </section>
 

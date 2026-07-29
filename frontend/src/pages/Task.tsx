@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, RefreshCw, XCircle, Play, Pause, Download, ExternalLink, Trash2, Copy, Zap, Flame, Radio, Mic, Brain, Crop, Sparkles, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, RefreshCw, XCircle, Play, Pause, Download, ExternalLink, Trash2, Copy, Zap, Flame, Radio, Mic, Brain, Crop, Sparkles, CheckCircle2, MessageCircle, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
@@ -204,7 +204,7 @@ function ClipCard({ clip, taskId, aspectRatio, isSelected, onSelect }: { clip: C
           </p>
         )}
 
-        {/* Export Buttons */}
+        {/* Action Buttons */}
         <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
           <a href={fileUrl} download={clip.filename} onClick={(e) => e.stopPropagation()} className="btn btn-primary btn-sm" style={{ flex: 1, background: "var(--accent)", color: "#000", fontWeight: 700 }}>
             <Download size={13} /> Download
@@ -226,6 +226,11 @@ export default function TaskPage() {
   const [status, setStatus] = useState("queued");
   const [loading, setLoading] = useState(true);
   const [selectedClipIndex, setSelectedClipIndex] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<{role: string; text: string}[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -279,6 +284,26 @@ export default function TaskPage() {
   }, [id]);
 
   const activeClip = task?.clips?.[selectedClipIndex] || task?.clips?.[0];
+
+  const handleChatSend = async () => {
+    const msg = chatInput.trim();
+    if (!msg || !id || !task?.clips?.length) return;
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: "user", text: msg }]);
+    setChatLoading(true);
+    try {
+      const clipIds = task.clips.map(c => c.id);
+      const result = await api.aiEdit(id, clipIds, msg);
+      const actions = result.actions_applied?.map((a: any) =>
+        `${a.action} on ${a.clip_id?.slice(0,8) || "all"}: ${a.status}`
+      ).join("\n") || "Done";
+      setChatMessages(prev => [...prev, { role: "assistant", text: `Applied: ${actions}` }]);
+    } catch (e: any) {
+      setChatMessages(prev => [...prev, { role: "assistant", text: `Error: ${e.message}` }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   return (
     <div style={{ paddingTop: "64px", minHeight: "100vh", background: "#0b0b0e", color: "#fff" }}>
@@ -488,6 +513,92 @@ export default function TaskPage() {
           </div>
         )}
       </div>
+
+      {/* Floating AI Chat Button */}
+      <button
+        onClick={() => setChatOpen(!chatOpen)}
+        style={{
+          position: "fixed", bottom: "1.5rem", right: "1.5rem", zIndex: 1000,
+          width: 52, height: 52, borderRadius: "50%",
+          background: "var(--accent)", border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 4px 20px rgba(255,224,0,0.4)",
+        }}
+      >
+        {chatOpen ? <X size={22} color="#000" /> : <MessageCircle size={22} color="#000" />}
+      </button>
+
+      {/* AI Chat Panel */}
+      {chatOpen && (
+        <div
+          ref={chatRef}
+          style={{
+            position: "fixed", bottom: "5.5rem", right: "1.5rem", zIndex: 1000,
+            width: "360px", maxHeight: "480px",
+            background: "#131318", border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "16px", display: "flex", flexDirection: "column",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.6)", overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "0.85rem 1rem", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Brain size={16} color="var(--accent)" />
+            <span style={{ fontWeight: 800, fontSize: "0.85rem" }}>Edit with AI</span>
+            <span style={{ marginLeft: "auto", fontSize: "0.68rem", color: "#888" }}>
+              {task?.clips?.length || 0} clips
+            </span>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem", minHeight: "200px" }}>
+            {chatMessages.length === 0 && (
+              <div style={{ fontSize: "0.78rem", color: "#888", textAlign: "center", padding: "2rem 0" }}>
+                Tell AI what to do with your clips.<br />
+                Try: "trim the first 2 seconds off clip 1" or "add captions to all clips"
+              </div>
+            )}
+            {chatMessages.map((m, i) => (
+              <div key={i} style={{
+                maxWidth: "85%", padding: "0.5rem 0.75rem", borderRadius: "10px",
+                fontSize: "0.78rem", lineHeight: 1.4,
+                alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                background: m.role === "user" ? "var(--accent)" : "#08080a",
+                color: m.role === "user" ? "#000" : "#ddd",
+                fontWeight: m.role === "user" ? 700 : 400, whiteSpace: "pre-wrap",
+              }}>
+                {m.text}
+              </div>
+            ))}
+            {chatLoading && (
+              <div style={{ alignSelf: "flex-start", background: "#08080a", padding: "0.5rem 0.75rem", borderRadius: "10px", fontSize: "0.78rem", color: "#888" }}>
+                Thinking...
+              </div>
+            )}
+          </div>
+          <div style={{ padding: "0.6rem", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: "0.5rem" }}>
+            <input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !chatLoading && handleChatSend()}
+              placeholder="Ask AI to edit clips..."
+              style={{
+                flex: 1, background: "#08080a", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px", padding: "0.5rem 0.75rem", fontSize: "0.8rem",
+                color: "#fff", outline: "none",
+              }}
+            />
+            <button
+              onClick={handleChatSend}
+              disabled={chatLoading || !chatInput.trim()}
+              style={{
+                background: "var(--accent)", border: "none", borderRadius: "8px",
+                padding: "0.5rem", cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                opacity: chatLoading || !chatInput.trim() ? 0.5 : 1,
+              }}
+            >
+              <Send size={16} color="#000" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

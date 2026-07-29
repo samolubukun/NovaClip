@@ -113,4 +113,34 @@ export const api = {
     const r = await fetch(`${API_BASE}/media/broll/status`);
     return r.json();
   },
+
+  async aiEdit(taskId: string, clipIds: string[], instruction: string) {
+    const geminiKey = localStorage.getItem("novaclip_gemini_key");
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/ai-edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clip_ids: clipIds,
+        instruction,
+        ...(geminiKey ? { gemini_api_key: geminiKey } : {}),
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
+
+  async translateCaptions(taskId: string, clipId: string, language: string) {
+    return this.aiEdit(taskId, [clipId], `translate captions to ${language}`);
+  },
+
+  async aiPrompt(url: string, instruction: string) {
+    const geminiKey = localStorage.getItem("novaclip_gemini_key");
+    const r = await fetch(`${API_BASE}/tasks/ai-prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, instruction, ...(geminiKey ? { gemini_api_key: geminiKey } : {}) }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
 };
