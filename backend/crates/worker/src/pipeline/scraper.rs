@@ -24,6 +24,19 @@ impl StudioScraper {
         info!("Fetching {} media for keyword '{}' from source '{}'", media_type, keyword, source);
 
         match source {
+            "all" => {
+                if !self.pexels_key.is_empty() {
+                    if let Ok(res) = self.fetch_pexels(keyword, media_type, &folder).await {
+                        return Ok(res);
+                    }
+                }
+                if !self.pixabay_key.is_empty() {
+                    if let Ok(res) = self.fetch_pixabay(keyword, media_type, &folder).await {
+                        return Ok(res);
+                    }
+                }
+                self.fetch_pinterest(keyword, media_type, &folder).await
+            }
             "pexels" if !self.pexels_key.is_empty() => self.fetch_pexels(keyword, media_type, &folder).await,
             "pixabay" if !self.pixabay_key.is_empty() => self.fetch_pixabay(keyword, media_type, &folder).await,
             _ => self.fetch_pinterest(keyword, media_type, &folder).await,
