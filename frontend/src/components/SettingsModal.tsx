@@ -9,12 +9,22 @@ interface SettingsModalProps {
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [geminiKey, setGeminiKey] = useState("");
   const [deepgramKey, setDeepgramKey] = useState("");
+  const [openrouterKey, setOpenrouterKey] = useState("");
+  const [openrouterModel, setOpenrouterModel] = useState("meta-llama/llama-3.3-70b-instruct:free");
+  const [elevenlabsKey, setElevenlabsKey] = useState("");
+  const [pexelsKey, setPexelsKey] = useState("");
+  const [pixabayKey, setPixabayKey] = useState("");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setGeminiKey(localStorage.getItem("novaclip_gemini_key") || "");
       setDeepgramKey(localStorage.getItem("novaclip_deepgram_key") || "");
+      setOpenrouterKey(localStorage.getItem("novaclip_openrouter_key") || "");
+      setOpenrouterModel(localStorage.getItem("novaclip_openrouter_model") || "meta-llama/llama-3.3-70b-instruct:free");
+      setElevenlabsKey(localStorage.getItem("novaclip_elevenlabs_key") || "");
+      setPexelsKey(localStorage.getItem("novaclip_pexels_key") || "");
+      setPixabayKey(localStorage.getItem("novaclip_pixabay_key") || "");
       setSaved(false);
     }
   }, [isOpen]);
@@ -24,6 +34,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSave = () => {
     localStorage.setItem("novaclip_gemini_key", geminiKey.trim());
     localStorage.setItem("novaclip_deepgram_key", deepgramKey.trim());
+    localStorage.setItem("novaclip_openrouter_key", openrouterKey.trim());
+    localStorage.setItem("novaclip_openrouter_model", openrouterModel.trim());
+    localStorage.setItem("novaclip_elevenlabs_key", elevenlabsKey.trim());
+    localStorage.setItem("novaclip_pexels_key", pexelsKey.trim());
+    localStorage.setItem("novaclip_pixabay_key", pixabayKey.trim());
     setSaved(true);
     setTimeout(() => {
       onClose();
@@ -49,7 +64,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         className="card"
         style={{
           width: "100%",
-          maxWidth: "480px",
+          maxWidth: "520px",
+          maxHeight: "90vh",
+          overflowY: "auto",
           padding: "1.5rem",
           position: "relative",
           background: "#121214",
@@ -74,12 +91,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted, #aaa)", marginBottom: "1.25rem", lineHeight: 1.4 }}>
-          Enter your API keys below. Keys are stored safely in your local device storage and used directly for video transcription and AI analysis.
+          Enter your API keys below. Keys are stored safely in local browser storage and used directly for video processing, AI models, voiceovers, and media scrapers.
         </p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem" }}>
+          {/* Gemini API Key */}
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
                 <Key size={14} color="var(--accent, #FFE000)" /> Google Gemini API Key
               </label>
@@ -91,13 +109,41 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               placeholder="AIzaSy..."
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.85rem" }}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem" }}
             />
-            <span style={{ fontSize: "0.72rem", color: "#888", marginTop: "0.25rem", display: "block" }}>Used for AI video analysis, virality scoring, and clip reasoning</span>
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for Gemini 3.1 Flash-Lite AI script analysis & virality scoring</span>
           </div>
 
+          {/* OpenRouter API Key */}
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
+                <Key size={14} color="var(--accent, #FFE000)" /> OpenRouter API Key & Free Models
+              </label>
+              <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.72rem", color: "var(--accent)", textDecoration: "underline" }}>Get Free Key ↗</a>
+            </div>
+            <input
+              type="password"
+              className="input"
+              placeholder="sk-or-v1-..."
+              value={openrouterKey}
+              onChange={(e) => setOpenrouterKey(e.target.value)}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem", marginBottom: "0.4rem" }}
+            />
+            <input
+              type="text"
+              className="input"
+              placeholder="Default model: meta-llama/llama-3.3-70b-instruct:free"
+              value={openrouterModel}
+              onChange={(e) => setOpenrouterModel(e.target.value)}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.78rem" }}
+            />
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Allows using free OpenRouter models (Llama 3.3 70B, DeepSeek R1, Qwen 2.5)</span>
+          </div>
+
+          {/* Deepgram API Key */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
                 <Key size={14} color="var(--accent, #FFE000)" /> Deepgram API Key
               </label>
@@ -109,13 +155,58 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               placeholder="Enter Deepgram key..."
               value={deepgramKey}
               onChange={(e) => setDeepgramKey(e.target.value)}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.85rem" }}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem" }}
             />
-            <span style={{ fontSize: "0.72rem", color: "#888", marginTop: "0.25rem", display: "block" }}>Used for Nova-3 word-level audio transcription and karaoke timing</span>
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for Nova-3 word-level transcription & Deepgram Aura TTS voiceover</span>
+          </div>
+
+          {/* ElevenLabs API Key */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
+                <Key size={14} color="var(--accent, #FFE000)" /> ElevenLabs API Key
+              </label>
+              <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.72rem", color: "var(--accent)", textDecoration: "underline" }}>Get Key ↗</a>
+            </div>
+            <input
+              type="password"
+              className="input"
+              placeholder="Enter ElevenLabs API key..."
+              value={elevenlabsKey}
+              onChange={(e) => setElevenlabsKey(e.target.value)}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem" }}
+            />
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for ElevenLabs custom cloned AI voices</span>
+          </div>
+
+          {/* Pexels & Pixabay Stock Keys */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#ccc", marginBottom: "0.2rem" }}>Pexels API Key</label>
+              <input
+                type="password"
+                className="input"
+                placeholder="Pexels key..."
+                value={pexelsKey}
+                onChange={(e) => setPexelsKey(e.target.value)}
+                style={{ width: "100%", fontFamily: "monospace", fontSize: "0.78rem" }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#ccc", marginBottom: "0.2rem" }}>Pixabay API Key</label>
+              <input
+                type="password"
+                className="input"
+                placeholder="Pixabay key..."
+                value={pixabayKey}
+                onChange={(e) => setPixabayKey(e.target.value)}
+                style={{ width: "100%", fontFamily: "monospace", fontSize: "0.78rem" }}
+              />
+            </div>
           </div>
         </div>
 
-        <div style={{ marginTop: "1.5rem", display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+        <div style={{ marginTop: "1.25rem", display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
           <button className="btn btn-secondary btn-sm" onClick={onClose}>
             Cancel
           </button>

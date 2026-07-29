@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import "./styles/globals.css";
 import Nav from "./components/Nav";
 import Home from "./pages/Home";
+import Studio from "./pages/Studio";
 import TaskPage from "./pages/Task";
 import History from "./pages/History";
 
@@ -14,6 +15,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <Nav />
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/studio" element={<Studio />} />
         <Route path="/task/:id" element={<TaskPage />} />
         <Route path="/history" element={<History />} />
       </Routes>
