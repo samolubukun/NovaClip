@@ -1,0 +1,1 @@
+ALTER TABLE tasks ADD COLUMN reframe_frame_skip INTEGER NOT NULL DEFAULT 1;

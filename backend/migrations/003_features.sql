@@ -1,0 +1,4 @@
+ALTER TABLE tasks ADD COLUMN originality_boost TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE tasks ADD COLUMN auto_memes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN translate_language TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN giphy_api_key TEXT;
