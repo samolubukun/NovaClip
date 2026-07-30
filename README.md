@@ -26,15 +26,15 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 
 ## Features
 
-- **Nova Studio — Faceless AI Creator**: Generate complete faceless videos from scripts or AI topics using sentence-level visual keyword extraction.
-- **AI Brains (Gemini 3.1 Flash-Lite & OpenRouter)**: Script generation and virality analysis powered by Gemini 3.1 Flash-Lite (Default), Gemini 3.1 Pro, or OpenRouter free models (`meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free`).
+- **Nova Studio — Faceless AI Creator**: Generate complete faceless videos from scratch. Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
+- **AI Brains (Gemini 3.1 Flash-Lite & OpenRouter)**: Script generation and virality analysis powered by Gemini 3.1 Flash-Lite (Default), Gemini 3.1 Pro, or OpenRouter free models (`meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free`). Topic-to-script generation targets exact word count for selected duration.
 - **Multi-Source Stock Media Scrapers**: Automated HD video and photo scraping with multi-platform fallback across **Pinterest Video & Photo Scraper** (Playwright + yt-dlp), **Pexels API**, and **Pixabay API**.
-- **Multi-Provider Neural Voiceovers (TTS)**: Choose between **Microsoft Edge-TTS** (free, 10+ languages), **ElevenLabs API** (cloned & custom voices), or **Deepgram Aura TTS**.
+- **Multi-Provider Neural Voiceovers (TTS) with Duration Sync**: Choose between **Microsoft Edge-TTS** (free, 10+ languages, estimated word timestamps), **ElevenLabs API** (native /with-timestamps endpoint for character-level alignment), or **Deepgram Aura TTS** + Deepgram STT (model nova-2) for precise word timing. Final video uses `-shortest` to ensure audio and video always end together.
 - **AI Virality Scoring**: Gemini AI evaluates hooks, retention probability, emotional peaks, and shareability for every extracted segment.
-- **Nova-3 Karaoke Subtitles**: Deepgram word-level timestamps drive multi-color active word-pop subtitle animations.
+- **Global ASS Karaoke Subtitles**: Word-level timestamps from any TTS provider drive multi-color active word-pop subtitle animations. Generated as a single `.ass` file for the entire video with per-word timing, no timestamp rebasing needed.
 - **Font & Typography Library**: Full studio typography control with 12 popular fonts (The Bold Font, TikTok Sans, Montserrat, Impact, Bebas Neue, Inter, etc.) and custom font size slider.
 - **AI Caption Color Palette Picker**: Customize primary text color and highlight accent color per clip with real-time sync.
-- **Brand Watermark Overlay**: Upload transparent PNG logos with configurable positioning (Top Right, Top Center, Top Left, Dead Center, Bottom Right, Bottom Center, Bottom Left) and 10%–100% opacity slider.
+- **Brand Watermark Overlay**: Upload transparent PNG/WEBP/JPEG logos with configurable positioning (Top Right, Top Left, Bottom Left, Bottom Right) and opacity slider. Looped across full video duration via ffmpeg `-loop 1` with per-frame alpha blending.
 - **Preset Caption Animations**: Choose between Bouncy Word-by-Word Pop, Typewriter Reveal, Smooth Fade-In, and Slide Up.
 - **NLP Emoji Auto-Insertion**: Automatically analyze transcript sentiment and append contextually relevant emojis to key caption words.
 - **AI Vertical Reframe**: YOLO + MediaPipe subject tracking replaces simple center-crop. Selectable presets (Talking Head, Sports, Pets, Cars) control zoom tightness, camera pan speed, and detected object classes.
@@ -53,9 +53,9 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 | Layer | Technologies & Tools |
 |---|---|
 | **Backend API** | Rust, Axum 0.8, Tokio Async Runtime, SQLx SQLite (WAL mode) |
-| **Video Engine** | FFmpeg, `yt-dlp`, Tokio MPSC In-Process Async Queue |
+| **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC In-Process Async Queue, Playwright Chromium (Pinterest scraper) |
 | **Subject Tracking** | Python 3.11, Ultralytics YOLO11n-seg, MediaPipe Face/Pose, OpenCV, SceneDetect |
-| **Speech AI** | Deepgram Nova-3 Word-Level Timestamp Alignment |
+| **Speech AI / TTS** | Deepgram Nova-3 STT, ElevenLabs with-timestamps API, Edge-TTS, Deepgram Aura TTS |
 | **Analysis & LLM AI** | Google Gemini AI Virality Analysis, Caption Translation, Edit Reasoning |
 | **Frontend UI** | React 19, TypeScript, Vite 6, Framer Motion, Lucide Icons |
 | **DevOps & Packaging** | Docker, Docker Compose, Nginx, Makefile |
@@ -142,7 +142,7 @@ NovaClip/
 │   │   │   └── src/routes/ (tasks, ai_edit, media, etc.)
 │   │   ├── db/           # SQLite database models & SQLx queries
 │   │   └── worker/       # Video processing pipeline
-│   │       └── src/pipeline/ (clip, caption, reframe, originality, translate, ...)
+│   │       └── src/pipeline/ (clip, caption, reframe, originality, translate, tts, scraper, studio_llm, ...)
 │   ├── novaclip_reframe/ # Python package for AI vertical reframe (YOLO + MediaPipe)
 │   │   ├── novaclip_reframe/
 │   │   │   └── auto_reframe.py  # Core subject-tracking engine
