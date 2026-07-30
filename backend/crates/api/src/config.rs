@@ -12,6 +12,12 @@ pub struct Config {
     pub deepgram_api_key: String,
     pub gemini_model: String,
     pub pexels_api_key: Option<String>,
+    pub pixabay_api_key: Option<String>,
+    pub spaces_endpoint: Option<String>,
+    pub spaces_key: Option<String>,
+    pub spaces_secret: Option<String>,
+    pub spaces_bucket: Option<String>,
+    pub spaces_public_url: Option<String>,
     pub max_concurrent_jobs: usize,
     pub job_timeout_seconds: u64,
 }
@@ -37,6 +43,12 @@ impl Config {
             gemini_model: env::var("GEMINI_MODEL")
                 .unwrap_or_else(|_| "gemini-3.1-flash-lite".into()),
             pexels_api_key: env::var("PEXELS_API_KEY").ok().filter(|s| !s.is_empty()),
+            pixabay_api_key: env::var("PIXABAY_API_KEY").ok().filter(|s| !s.is_empty()),
+            spaces_endpoint: env::var("SPACES_ENDPOINT").ok().filter(|s| !s.is_empty()),
+            spaces_key: env::var("SPACES_KEY").ok().filter(|s| !s.is_empty()),
+            spaces_secret: env::var("SPACES_SECRET").ok().filter(|s| !s.is_empty()),
+            spaces_bucket: env::var("SPACES_BUCKET_NAME").ok().filter(|s| !s.is_empty()),
+            spaces_public_url: env::var("SPACES_PUBLIC_URL").ok().filter(|s| !s.is_empty()),
             max_concurrent_jobs: env::var("MAX_CONCURRENT_JOBS")
                 .ok()
                 .and_then(|v| v.parse().ok())
