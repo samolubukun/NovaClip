@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -7,7 +8,7 @@ use axum::{
     Json, Router,
 };
 use futures::stream::Stream;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::time::Duration;
@@ -32,6 +33,7 @@ pub fn tasks_router() -> Router<AppState> {
         .route("/tasks/{id}/clips/{clip_id}/regenerate", post(regenerate_clip))
         .route("/tasks/{id}/clips/{clip_id}/captions", patch(update_captions))
         .route("/tasks/{id}/clips/merge", post(merge_clips))
+        .route("/tasks/{id}/watermark", post(upload_watermark))
         .route("/tasks/ai-prompt", post(ai_prompt_handler))
 }
 
@@ -90,6 +92,47 @@ async fn list_tasks(
     Ok(Json(json!({"tasks": tasks, "total": total})))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioApiKeys {
+    #[serde(default)]
+    pub gemini_key: Option<String>,
+    #[serde(default)]
+    pub openrouter_key: Option<String>,
+    #[serde(default)]
+    pub deepgram_key: Option<String>,
+    #[serde(default)]
+    pub elevenlabs_key: Option<String>,
+    #[serde(default)]
+    pub pexels_key: Option<String>,
+    #[serde(default)]
+    pub pixabay_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudioPayload {
+    pub script: String,
+    #[serde(default)]
+    pub duration: Option<i32>,
+    #[serde(default)]
+    pub llm_provider: Option<String>,
+    #[serde(default)]
+    pub tts_provider: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub media_type: Option<String>,
+    #[serde(default)]
+    pub vibe: Option<String>,
+    #[serde(default)]
+    pub subtitle_style: Option<String>,
+    #[serde(default)]
+    pub bg_music: Option<String>,
+    #[serde(default)]
+    pub api_keys: Option<StudioApiKeys>,
+}
+
 #[derive(Deserialize)]
 struct CreateTaskRequest {
     url: Option<String>,
@@ -115,6 +158,14 @@ struct CreateTaskRequest {
     originality_boost: Option<String>,
     translate_language: Option<String>,
     giphy_api_key: Option<String>,
+    source_title: Option<String>,
+    /// Studio payload for faceless AI video generation tasks (source_type = "studio")
+    studio_payload: Option<StudioPayload>,
+    highlight_color: Option<String>,
+    caption_animation: Option<String>,
+    auto_emojis: Option<bool>,
+    watermark_position: Option<String>,
+    watermark_opacity: Option<f64>,
 }
 
 fn validate_aspect_ratio(ar: &str) -> &str {
@@ -140,7 +191,9 @@ async fn create_task(
         .or_else(|| req.source.as_ref().and_then(|s| s.get("url").and_then(|v| v.as_str()).map(|s| s.to_string())))
         .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(json!({"error": "url is required"}))))?;
 
-    let source_type = if url.contains("youtube.com") || url.contains("youtu.be") {
+    let source_type = if url.starts_with("studio://") {
+        "studio"
+    } else if url.contains("youtube.com") || url.contains("youtu.be") {
         "youtube"
     } else if url.starts_with("upload://") {
         "upload"
@@ -169,18 +222,33 @@ async fn create_task(
     let reframe_frame_skip = req.reframe_frame_skip.unwrap_or(1).clamp(1, 10);
     let originality_boost = req.originality_boost.clone().unwrap_or_else(|| "none".into());
     let translate_language = req.translate_language.clone().unwrap_or_default();
+    let studio_payload_json = req.studio_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
+
+    let source_title = req.source_title.unwrap_or_else(|| url.clone());
+
+    let highlight_color = match req.highlight_color.as_deref() {
+        Some(c) if c.len() == 7 && c.starts_with('#') => c.to_uppercase(),
+        _ => "#FFE000".to_string(),
+    };
+    let caption_animation = req.caption_animation.clone().unwrap_or_else(|| "word_pop".to_string());
+    let auto_emojis = if req.auto_emojis.unwrap_or(false) { 1i32 } else { 0i32 };
+    let watermark_position = req.watermark_position.clone().unwrap_or_else(|| "top_right".to_string());
+    let watermark_opacity = req.watermark_opacity.unwrap_or(0.8);
 
     sqlx::query(
         r#"INSERT INTO tasks
-           (id, source_url, source_type, aspect_ratio, num_clips, font_family, font_size,
+           (id, source_url, source_title, source_type, aspect_ratio, num_clips, font_family, font_size,
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
             gemini_api_key, deepgram_api_key, auto_vertical_reframe, reframe_preset,
-            reframe_frame_skip, originality_boost, translate_language, giphy_api_key)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+            reframe_frame_skip, originality_boost, translate_language, giphy_api_key,
+            studio_payload, highlight_color, caption_animation, auto_emojis,
+            watermark_position, watermark_opacity)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
+    .bind(&source_title)
     .bind(source_type)
     .bind(&aspect_ratio)
     .bind(req.num_clips.unwrap_or(5).clamp(1, 30))
@@ -203,6 +271,12 @@ async fn create_task(
     .bind(&originality_boost)
     .bind(&translate_language)
     .bind(req.giphy_api_key)
+    .bind(studio_payload_json)
+    .bind(&highlight_color)
+    .bind(&caption_animation)
+    .bind(auto_emojis)
+    .bind(&watermark_position)
+    .bind(watermark_opacity)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -265,6 +339,12 @@ async fn get_task(
         "translate_language": task.translate_language,
         "stage_timings": stage_timings,
         "error_message": task.error_message,
+        "studio_payload": task.studio_payload.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+        "highlight_color": task.highlight_color,
+        "caption_animation": task.caption_animation,
+        "auto_emojis": task.auto_emojis,
+        "watermark_position": task.watermark_position,
+        "watermark_opacity": task.watermark_opacity,
         "created_at": task.created_at,
         "completed_at": task.completed_at,
         "clips": clips,
@@ -735,6 +815,7 @@ async fn download_all_clips(
 struct StudioScriptReq {
     topic: String,
     vibe: Option<String>,
+    duration: Option<i32>,
     llm_provider: Option<String>,
     api_key: Option<String>,
 }
@@ -751,12 +832,87 @@ async fn generate_studio_script(
 
     let vibe = req.vibe.unwrap_or_else(|| "aesthetic".into());
     let provider = req.llm_provider.unwrap_or_else(|| "gemini-3.1-flash-lite".into());
-    let key = req.api_key.unwrap_or_default();
 
-    let processor = StudioLlmProcessor::new(key.clone(), provider, key);
-    let script = processor.generate_topic_script(topic, &vibe)
+    // Use API key from request, falling back to environment variable
+    let key = req.api_key
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| std::env::var("GEMINI_API_KEY").ok())
+        .unwrap_or_default();
+
+    if key.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Gemini API key required — set one in Settings or add GEMINI_API_KEY to .env"}))));
+    }
+
+    let duration = req.duration.unwrap_or(60);
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
+    let processor = StudioLlmProcessor::new(key.clone(), provider, openrouter_key);
+    let script = processor.generate_topic_script(topic, &vibe, duration)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
+    if script.trim().is_empty() {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "AI returned an empty script — check your API key and model name"}))));
+    }
+
     Ok(Json(json!({ "script": script })))
+}
+
+async fn upload_watermark(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let id_str = id.to_string();
+
+    // Verify task exists
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE id = ?")
+        .bind(&id_str)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    if count == 0 {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))));
+    }
+
+    let output_dir = PathBuf::from(
+        std::env::var("OUTPUT_DIR").unwrap_or_else(|_| "outputs".into())
+    ).join(&id_str);
+    tokio::fs::create_dir_all(&output_dir).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("Failed to create directory: {}", e)}))))?;
+
+    let mut saved_path: Option<String> = None;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "watermark" {
+            let file_name = field.file_name().unwrap_or("watermark.png").to_string();
+            let p = PathBuf::from(&file_name);
+            let ext = p.extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("png");
+            let dest = output_dir.join(format!("watermark.{}", ext));
+            let data = field.bytes().await
+                .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": format!("Failed to read file: {}", e)}))))?;
+
+            tokio::fs::write(&dest, &data).await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("Failed to save file: {}", e)}))))?;
+
+            saved_path = Some(dest.to_string_lossy().to_string());
+            break;
+        }
+    }
+
+    match saved_path {
+        Some(path) => {
+            sqlx::query("UPDATE tasks SET watermark_path = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(&path)
+                .bind(&id_str)
+                .execute(&state.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+            Ok(Json(json!({"message": "Watermark uploaded", "path": path})))
+        }
+        None => Err((StatusCode::BAD_REQUEST, Json(json!({"error": "No watermark file found in upload. Use field name 'watermark'."})))),
+    }
 }
