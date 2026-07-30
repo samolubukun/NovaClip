@@ -14,6 +14,12 @@ services:
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
       PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+      SPACES_ENDPOINT: ${SPACES_ENDPOINT:-}
+      SPACES_KEY: ${SPACES_KEY:-}
+      SPACES_SECRET: ${SPACES_SECRET:-}
+      SPACES_BUCKET_NAME: ${SPACES_BUCKET_NAME:-}
+      SPACES_PUBLIC_URL: ${SPACES_PUBLIC_URL:-}
       OUTPUT_DIR: /app/outputs
       TEMP_DIR: /app/temp
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}

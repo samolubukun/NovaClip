@@ -12,15 +12,18 @@ COPY migrations ./migrations
 
 RUN cargo build --release
 
-# API runtime
+# API runtime (also runs in-process worker)
 FROM debian:bookworm-slim AS api
 RUN apt-get update && apt-get install -y \
-    libssl3 libpq5 ca-certificates ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    libssl3 libpq5 ca-certificates ffmpeg python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists/* && \
+    python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache-dir edge-tts gtts
 WORKDIR /app
 COPY --from=builder /build/target/release/novaclip-api ./
 COPY --from=builder /build/migrations ./migrations
 RUN mkdir -p outputs temp/uploads
+ENV PATH="/app/venv/bin:${PATH}"
 EXPOSE 8000
 CMD ["./novaclip-api"]
 
@@ -32,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     python3 -m venv /app/venv && \
     /app/venv/bin/pip install --no-cache-dir \
         yt-dlp \
+        edge-tts gtts \
         ultralytics>=8.3.0 \
         mediapipe==0.10.14 \
         numpy>=1.26 \
