@@ -184,7 +184,7 @@ pub fn get_caption_style(template: &str, font_family: &str, font_size: i32, font
     }
 }
 
-fn ass_timestamp(secs: f64) -> String {
+pub fn ass_timestamp(secs: f64) -> String {
     let s = secs.max(0.0);
     let h = (s / 3600.0) as u64;
     let m = ((s % 3600.0) / 60.0) as u64;
@@ -192,7 +192,7 @@ fn ass_timestamp(secs: f64) -> String {
     format!("{}:{:02}:{:05.2}", h, m, sec)
 }
 
-fn escape_ass(text: &str) -> String {
+pub fn escape_ass(text: &str) -> String {
     text.replace('\\', "\\\\").replace('{', "\\{").replace('}', "\\}")
 }
 

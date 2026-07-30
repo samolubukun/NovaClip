@@ -73,4 +73,12 @@ pub struct PipelineConfig {
     pub gemini_model: String,
     pub deepgram_api_key: String,
     pub pexels_api_key: Option<String>,
+    pub pixabay_api_key: Option<String>,
+    pub studio_payload: Option<serde_json::Value>,
+    pub highlight_color: String,
+    pub caption_animation: String,
+    pub auto_emojis: bool,
+    pub watermark_position: String,
+    pub watermark_opacity: f64,
+    pub watermark_path: Option<String>,
 }
