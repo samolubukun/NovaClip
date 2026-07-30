@@ -133,6 +133,17 @@ export const api = {
     return this.aiEdit(taskId, [clipId], `translate captions to ${language}`);
   },
 
+  async uploadWatermark(taskId: string, file: File) {
+    const fd = new FormData();
+    fd.append("watermark", file);
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/watermark`, {
+      method: "POST",
+      body: fd,
+    });
+    if (!r.ok) throw new Error((await r.json()).error || "Watermark upload failed");
+    return r.json();
+  },
+
   async aiPrompt(url: string, instruction: string) {
     const geminiKey = localStorage.getItem("novaclip_gemini_key");
     const r = await fetch(`${API_BASE}/tasks/ai-prompt`, {

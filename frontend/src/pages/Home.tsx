@@ -119,6 +119,7 @@ export default function Home() {
         caption_animation: captionAnimation,
         auto_emojis: autoEmojis,
         watermark_position: watermarkPosition,
+        watermark_opacity: watermarkOpacity,
         caption_template: captionTemplate,
         add_subtitles: addSubtitles,
         processing_mode: mode,
@@ -130,6 +131,9 @@ export default function Home() {
         translate_language: translateLanguage,
       });
 
+      if (watermarkFile) {
+        api.uploadWatermark(result.task_id, watermarkFile).catch(() => {});
+      }
       toast.success("Task created! Processing started.");
       nav(`/task/${result.task_id}`);
     } catch (e: any) {

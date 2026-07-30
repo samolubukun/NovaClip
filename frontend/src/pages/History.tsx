@@ -11,6 +11,7 @@ interface TaskSummary {
   progress: number;
   source_url: string;
   source_title?: string;
+  source_type: string;
   clips_count: number;
   created_at: string;
   completed_at?: string;
@@ -41,6 +42,7 @@ export default function History() {
   const [firstClipMap, setFirstClipMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "studio" | "clipper">("all");
   const [selectedTask, setSelectedTask] = useState<{ id: string; title: string; clips: Clip[] } | null>(null);
 
   useEffect(() => {
@@ -86,10 +88,14 @@ export default function History() {
     }
   };
 
-  const filteredTasks = tasks.filter(t =>
-    (t.source_title || t.source_url).toLowerCase().includes(search.toLowerCase()) ||
-    t.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredTasks = tasks.filter(t => {
+    if (filter === "studio" && t.source_type !== "studio") return false;
+    if (filter === "clipper" && t.source_type === "studio") return false;
+    return (
+      (t.source_title || t.source_url).toLowerCase().includes(search.toLowerCase()) ||
+      t.id.toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   return (
     <div style={{ paddingTop: "64px", minHeight: "100vh", background: "#0b0b0e", color: "#fff" }}>
@@ -105,44 +111,8 @@ export default function History() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            {/* Daily Audio Overview (TTS Dashboard Briefing Button) */}
-            <button
-              onClick={() => {
-                if ('speechSynthesis' in window) {
-                  window.speechSynthesis.cancel();
-                  const completed = tasks.filter(t => t.status === "completed").length;
-                  const totalClips = tasks.reduce((sum, t) => sum + (t.clips_count || 0), 0);
-                  const text = `NovaClip Daily Audio Briefing. You currently have ${tasks.length} total video tasks in your history dashboard. ${completed} tasks are fully completed, producing a total of ${totalClips} viral video clips ready for download. Have a productive day generating clips!`;
-                  const msg = new SpeechSynthesisUtterance(text);
-                  msg.rate = 1.0;
-                  msg.pitch = 1.0;
-                  window.speechSynthesis.speak(msg);
-                  toast.success("Playing Daily Audio Briefing 🎙️");
-                } else {
-                  toast.error("Speech synthesis not supported in browser");
-                }
-              }}
-              className="btn btn-secondary btn-sm"
-              style={{
-                background: "rgba(255, 224, 0, 0.12)",
-                border: "1px solid rgba(255, 224, 0, 0.3)",
-                color: "var(--accent)",
-                fontWeight: 800,
-                fontSize: "0.78rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                borderRadius: "10px",
-                padding: "0.5rem 0.85rem",
-                cursor: "pointer",
-              }}
-            >
-              <Play size={14} /> Daily Audio Overview
-            </button>
-
-            {/* Search Input (Serivia Inspired) */}
-            <div style={{ position: "relative", minWidth: "240px" }}>
+          {/* Search Input (Serivia Inspired) */}
+          <div style={{ position: "relative", minWidth: "280px" }}>
             <Search size={16} style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "#666" }} />
             <input
               type="text"
@@ -160,6 +130,28 @@ export default function History() {
               }}
             />
           </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
+          {(["all", "clipper", "studio"] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              style={{
+                padding: "0.4rem 1rem",
+                borderRadius: "8px",
+                fontSize: "0.78rem",
+                fontWeight: 800,
+                border: "none",
+                cursor: "pointer",
+                background: filter === f ? "var(--accent)" : "rgba(255,255,255,0.06)",
+                color: filter === f ? "#000" : "#aaa",
+              }}
+            >
+              {f === "all" ? "All" : f === "clipper" ? "Nova Clipper" : "Nova Studio"}
+            </button>
+          ))}
         </div>
 
         {loading && (
@@ -241,8 +233,14 @@ export default function History() {
                   <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.4rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff" }}>
                     {task.source_title || task.source_url}
                   </h3>
-                  <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.75rem", color: "#888", marginBottom: "1rem" }}>
+                  <div style={{ display: "flex", gap: "0.6rem", fontSize: "0.75rem", color: "#888", marginBottom: "1rem", alignItems: "center" }}>
                     <span>{timeAgo(task.created_at)}</span>
+                    <span>•</span>
+                    {task.source_type === "studio" ? (
+                      <span style={{ background: "rgba(168,85,247,0.2)", color: "#c084fc", padding: "0.15rem 0.5rem", borderRadius: "6px", fontWeight: 800, fontSize: "0.7rem" }}>Faceless AI</span>
+                    ) : (
+                      <span style={{ background: "rgba(59,130,246,0.2)", color: "#60a5fa", padding: "0.15rem 0.5rem", borderRadius: "6px", fontWeight: 800, fontSize: "0.7rem" }}>Clip</span>
+                    )}
                     <span>•</span>
                     <span style={{ color: "var(--accent)", fontWeight: 700 }}>{task.clips_count} clips</span>
                   </div>
