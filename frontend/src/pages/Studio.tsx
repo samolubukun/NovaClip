@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Film, Sparkles, Wand2, Sliders, Play, RotateCcw, Upload, Image as ImageIcon,
-  Check, Cpu, Volume2, Globe, FileText, Layers, Video, Zap, MessageSquare
+  Check, Cpu, Volume2, Globe, Layers, Video, Zap, MessageSquare
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -29,61 +29,88 @@ const TTS_PROVIDERS = [
   { id: "deepgram-aura", label: "Deepgram Aura TTS", desc: "Low latency streaming AI voices" },
 ];
 
-const SCRAPER_SOURCES = [
-  { id: "all", label: "All Sources (Multi-Platform Fallback)", badge: "Auto" },
-  { id: "pinterest", label: "Pinterest Video & Photo Scraper", badge: "Free" },
-  { id: "pexels", label: "Pexels Stock API", badge: "API" },
-  { id: "pixabay", label: "Pixabay Stock API", badge: "API" },
+const DEEPGRAM_VOICES = [
+  { id: "aura-2-asteria-en", label: "Aura 2 — Asteria (Female) ★" },
+  { id: "aura-2-athena-en", label: "Aura 2 — Athena (Female) ★" },
+  { id: "aura-2-luna-en", label: "Aura 2 — Luna (Female) ★" },
+  { id: "aura-2-stella-en", label: "Aura 2 — Stella (Female) ★" },
+  { id: "aura-2-hera-en", label: "Aura 2 — Hera (Female) ★" },
+  { id: "aura-2-orion-en", label: "Aura 2 — Orion (Male) ★" },
+  { id: "aura-2-arcas-en", label: "Aura 2 — Arcas (Male) ★" },
+  { id: "aura-2-perseus-en", label: "Aura 2 — Perseus (Male) ★" },
+  { id: "aura-2-angus-en", label: "Aura 2 — Angus (Male) ★" },
+  { id: "aura-2-orpheus-en", label: "Aura 2 — Orpheus (Male) ★" },
+  { id: "aura-asteria-en", label: "Aura 1 — Asteria (Female)" },
+  { id: "aura-athena-en", label: "Aura 1 — Athena (Female)" },
+  { id: "aura-luna-en", label: "Aura 1 — Luna (Female)" },
+  { id: "aura-stella-en", label: "Aura 1 — Stella (Female)" },
+  { id: "aura-hera-en", label: "Aura 1 — Hera (Female)" },
+  { id: "aura-orion-en", label: "Aura 1 — Orion (Male)" },
+  { id: "aura-arcas-en", label: "Aura 1 — Arcas (Male)" },
+  { id: "aura-perseus-en", label: "Aura 1 — Perseus (Male)" },
+  { id: "aura-angus-en", label: "Aura 1 — Angus (Male)" },
+  { id: "aura-orpheus-en", label: "Aura 1 — Orpheus (Male)" },
 ];
 
 export default function Studio() {
   const navigate = useNavigate();
-  const [scriptMode, setScriptMode] = useState<"write" | "ai">("ai");
+
   const [script, setScript] = useState("");
   const [topic, setTopic] = useState("");
+  const [scriptStatus, setScriptStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [scriptError, setScriptError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [llmProvider, setLlmProvider] = useState("gemini-3.1-flash-lite");
   const [customLlmModel, setCustomLlmModel] = useState("");
   const [ttsProvider, setTtsProvider] = useState("edge-tts");
   const [voiceName, setVoiceName] = useState("en-US-ChristopherNeural");
   const [elevenVoiceId, setElevenVoiceId] = useState("");
-  const [scraperSource, setScraperSource] = useState("pinterest");
+  const [deepgramVoice, setDeepgramVoice] = useState("aura-asteria-en");
+
+  const [duration, setDuration] = useState("60");
+  const [source, setSource] = useState("all");
   const [mediaType, setMediaType] = useState<"video" | "photo">("video");
   const [vibe, setVibe] = useState("aesthetic");
   const [subtitleStyle, setSubtitleStyle] = useState("high_retention");
   const [bgMusic, setBgMusic] = useState("none");
   const [loading, setLoading] = useState(false);
-  const [aiScriptLoading, setAiScriptLoading] = useState(false);
+
+  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [watermarkPreviewUrl, setWatermarkPreviewUrl] = useState<string | null>(null);
+  const [watermarkPosition, setWatermarkPosition] = useState("top_right");
+  const [watermarkOpacity, setWatermarkOpacity] = useState(80);
+  const watermarkInputRef = useRef<HTMLInputElement>(null);
 
   const currentMockup = ASPECT_RATIOS.find(ar => ar.id === aspectRatio) || ASPECT_RATIOS[0];
 
   const handleGenerateScriptWithAI = async () => {
     if (!topic.trim()) {
-      toast.error("Please enter a topic for AI script generation");
+      setScriptStatus("error");
+      setScriptError("Please enter a topic first");
       return;
     }
-    setAiScriptLoading(true);
+    setScriptStatus("loading");
+    setScriptError("");
     try {
       const apiKey = localStorage.getItem("novaclip_gemini_key") || localStorage.getItem("novaclip_openrouter_key") || "";
-      const res = await fetch("/api/studio/generate_script", {
+      const res = await fetch("/studio/generate_script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: topic.trim(),
           vibe,
+          duration: Number(duration),
           llm_provider: llmProvider === "custom" ? customLlmModel : llmProvider,
           api_key: apiKey,
         }),
       });
-      if (!res.ok) throw new Error("Script generation failed");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Script generation failed");
       setScript(data.script || "");
-      setScriptMode("write");
-      toast.success("AI script generated successfully!");
+      setScriptStatus("done");
     } catch (e: any) {
-      toast.error(e.message || "Failed to generate script");
-    } finally {
-      setAiScriptLoading(false);
+      setScriptStatus("error");
+      setScriptError(e.message || "Failed to generate script");
     }
   };
 
@@ -94,13 +121,18 @@ export default function Studio() {
     }
     setLoading(true);
     try {
+      const videoTitle = topic.trim()
+        ? topic.trim().slice(0, 80)
+        : script.trim().split(/\s+/).slice(0, 10).join(" ").slice(0, 80);
+
       const payload = {
         script: script.trim(),
         aspect_ratio: aspectRatio,
         llm_provider: llmProvider === "custom" ? customLlmModel : llmProvider,
         tts_provider: ttsProvider,
-        voice: ttsProvider === "elevenlabs" ? elevenVoiceId : voiceName,
-        source: scraperSource,
+        voice: ttsProvider === "elevenlabs" ? elevenVoiceId : ttsProvider === "deepgram-aura" ? deepgramVoice : voiceName,
+        duration: Number(duration),
+        source,
         media_type: mediaType,
         vibe,
         subtitle_style: subtitleStyle,
@@ -116,7 +148,8 @@ export default function Studio() {
       };
 
       const task = await api.createTask({
-        video_url: "studio://faceless",
+        url: "studio://faceless",
+        source_title: videoTitle,
         aspect_ratio: aspectRatio,
         num_clips: 1,
         font_family: "THEBOLDFONT",
@@ -125,13 +158,18 @@ export default function Studio() {
         highlight_color: "#ffe000",
         caption_animation: "word_pop",
         auto_emojis: true,
-        watermark_position: "top_right",
-        watermark_opacity: 80,
+        watermark_position: watermarkPosition,
+        watermark_opacity: watermarkOpacity,
         studio_payload: payload,
       });
 
-      toast.success("Nova Studio task created! Processing video...");
-      navigate(`/task/${task.id}`);
+      if (watermarkFile) {
+        api.uploadWatermark(task.task_id, watermarkFile).catch(() => {});
+      }
+
+      sessionStorage.setItem("nova_last_task_type", "studio");
+      toast.success("Nova Studio task created! Check the task page for progress.");
+      navigate(`/task/${task.task_id}`);
     } catch (e: any) {
       toast.error(e.message || "Failed to start studio task");
     } finally {
@@ -161,61 +199,46 @@ export default function Studio() {
         <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <div style={{ background: "#0c0c0f", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "20px", padding: "1.5rem", marginBottom: "1.5rem" }}>
             
-            {/* Script Input Mode Switcher */}
-            <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem" }}>
-              <button
-                type="button"
-                onClick={() => setScriptMode("ai")}
-                style={{
-                  flex: 1, padding: "0.65rem", borderRadius: "12px",
-                  border: `1px solid ${scriptMode === "ai" ? "var(--accent)" : "rgba(255,255,255,0.08)"}`,
-                  background: scriptMode === "ai" ? "rgba(255,224,0,0.12)" : "#131318",
-                  color: scriptMode === "ai" ? "var(--accent)" : "#aaa",
-                  fontWeight: 800, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem"
-                }}
-              >
-                <Wand2 size={16} /> AI Topic Script Writer
-              </button>
-              <button
-                type="button"
-                onClick={() => setScriptMode("write")}
-                style={{
-                  flex: 1, padding: "0.65rem", borderRadius: "12px",
-                  border: `1px solid ${scriptMode === "write" ? "var(--accent)" : "rgba(255,255,255,0.08)"}`,
-                  background: scriptMode === "write" ? "rgba(255,224,0,0.12)" : "#131318",
-                  color: scriptMode === "write" ? "var(--accent)" : "#aaa",
-                  fontWeight: 800, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem"
-                }}
-              >
-                <FileText size={16} /> Paste Custom Script
-              </button>
+            {/* AI Topic Prompt */}
+            <div style={{ marginBottom: "1.25rem" }}>
+              <label style={{ display: "block", fontSize: "0.82rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>Video Topic / Idea</label>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g., 5 Mind-Blowing Secrets About Space Exploration...  (or type directly in the script box below)"
+                  value={topic}
+                  onChange={e => setTopic(e.target.value)}
+                  style={{ flex: 1, fontSize: "0.88rem" }}
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateScriptWithAI}
+                  disabled={scriptStatus === "loading"}
+                  style={{ background: "var(--accent)", color: "#000", fontWeight: 900, border: "none", borderRadius: "10px", padding: "0.6rem 1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem" }}
+                >
+                  {scriptStatus === "loading" ? <div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /> : <Sparkles size={16} />}
+                  <span>Generate</span>
+                </button>
+              </div>
             </div>
 
-            {/* AI Topic Prompt */}
-            {scriptMode === "ai" ? (
-              <div style={{ marginBottom: "1.25rem" }}>
-                <label style={{ display: "block", fontSize: "0.82rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>Video Topic / Idea</label>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="e.g., 5 Mind-Blowing Secrets About Space Exploration..."
-                    value={topic}
-                    onChange={e => setTopic(e.target.value)}
-                    style={{ flex: 1, fontSize: "0.88rem" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleGenerateScriptWithAI}
-                    disabled={aiScriptLoading}
-                    style={{ background: "var(--accent)", color: "#000", fontWeight: 900, border: "none", borderRadius: "10px", padding: "0.6rem 1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem" }}
-                  >
-                    {aiScriptLoading ? <div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /> : <Sparkles size={16} />}
-                    <span>Generate</span>
-                  </button>
-                </div>
+            {/* Inline generation status */}
+            {scriptStatus === "loading" && (
+              <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px", background: "rgba(255,224,0,0.08)", border: "1px solid rgba(255,224,0,0.2)", color: "var(--accent)", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div className="spinner" style={{ width: "14px", height: "14px", borderWidth: "2px", borderColor: "var(--accent)", borderTopColor: "transparent", flexShrink: 0 }} /> Generating script from topic...
               </div>
-            ) : null}
+            )}
+            {scriptStatus === "done" && (
+              <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px", background: "rgba(0,255,100,0.08)", border: "1px solid rgba(0,255,100,0.2)", color: "#00ff64", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <Check size={14} /> Script generated — review and edit below, then configure settings and generate video
+              </div>
+            )}
+            {scriptStatus === "error" && (
+              <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px", background: "rgba(255,50,50,0.08)", border: "1px solid rgba(255,50,50,0.2)", color: "#ff5050", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span style={{ fontWeight: 900 }}>!</span> {scriptError}
+              </div>
+            )}
 
             {/* Script Textarea */}
             <div>
@@ -255,19 +278,6 @@ export default function Studio() {
                 </select>
               </div>
 
-              {/* Media Scraper Source */}
-              <div>
-                <label style={{ display: "block", fontSize: "0.78rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>Media Scraper Source</label>
-                <select
-                  value={scraperSource}
-                  onChange={e => setScraperSource(e.target.value)}
-                  style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "10px", padding: "0.55rem 0.75rem", fontSize: "0.82rem", fontWeight: 600 }}
-                >
-                  {SCRAPER_SOURCES.map(src => (
-                    <option key={src.id} value={src.id}>{src.label}</option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginBottom: "1.25rem" }}>
@@ -316,10 +326,37 @@ export default function Studio() {
                     style={{ width: "100%", marginTop: "0.4rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
                   />
                 )}
+                {ttsProvider === "deepgram-aura" && (
+                  <select
+                    value={deepgramVoice}
+                    onChange={e => setDeepgramVoice(e.target.value)}
+                    style={{ width: "100%", marginTop: "0.4rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
+                  >
+                    {DEEPGRAM_VOICES.map(v => (
+                      <option key={v.id} value={v.id}>{v.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+              {/* Target Duration */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Target Duration</label>
+                <select
+                  value={duration}
+                  onChange={e => setDuration(e.target.value)}
+                  style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
+                >
+                  <option value="30">30s Short</option>
+                  <option value="45">45s</option>
+                  <option value="60">60s Standard</option>
+                  <option value="90">90s</option>
+                  <option value="120">120s Long</option>
+                </select>
+              </div>
+
               {/* Media Type */}
               <div>
                 <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Media Mode</label>
@@ -330,6 +367,20 @@ export default function Studio() {
                 >
                   <option value="video">HD Videos</option>
                   <option value="photo">Photos (Ken Burns)</option>
+                </select>
+              </div>
+
+              {/* Media Source */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Media Source</label>
+                <select
+                  value={source}
+                  onChange={e => setSource(e.target.value)}
+                  style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
+                >
+                  <option value="pinterest">Pinterest</option>
+                  <option value="stock_api">Pexels &amp; Pixabay</option>
+                  <option value="all">All Sources</option>
                 </select>
               </div>
 
@@ -362,6 +413,69 @@ export default function Studio() {
                   <option value="bold_outline">Bold Black Outline</option>
                   <option value="minimal">Minimal White</option>
                 </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
+              <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, whiteSpace: "nowrap" }}>Background Music</label>
+              <select
+                value={bgMusic}
+                onChange={e => setBgMusic(e.target.value)}
+                style={{ flex: 1, maxWidth: "200px", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
+              >
+                <option value="none">None</option>
+                <option value="upbeat">Upbeat</option>
+                <option value="chill">Chill</option>
+                <option value="cinematic">Cinematic</option>
+              </select>
+            </div>
+
+            {/* Watermark / Brand Logo Overlay */}
+            <div style={{ background: "#08080a", borderRadius: "12px", padding: "1rem", border: "1px solid rgba(255,255,255,0.08)", marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                <label style={{ fontSize: "0.8rem", color: "#fff", fontWeight: 800, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <Upload size={14} color="var(--accent)" />
+                  Brand Logo / Watermark
+                </label>
+                <span style={{ fontSize: "0.7rem", color: "#888" }}>PNG / Transparent</span>
+              </div>
+              <input
+                ref={watermarkInputRef}
+                type="file" accept="image/png,image/jpeg,image/webp"
+                hidden
+                onChange={e => {
+                  const f = e.target.files?.[0] || null;
+                  setWatermarkFile(f);
+                  setWatermarkPreviewUrl(f ? URL.createObjectURL(f) : null);
+                }}
+              />
+              {watermarkFile && watermarkPreviewUrl ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#131318", border: "1px solid rgba(255,224,0,0.3)", borderRadius: "10px", padding: "0.5rem 0.75rem", marginBottom: "0.75rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <img src={watermarkPreviewUrl} alt="Logo" style={{ width: "30px", height: "30px", objectFit: "contain", borderRadius: "4px", background: "#000", padding: "2px" }} />
+                    <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "#fff" }}>{watermarkFile.name}</span>
+                  </div>
+                  <button type="button" onClick={() => { setWatermarkFile(null); setWatermarkPreviewUrl(null); }} style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444", borderRadius: "6px", padding: "0.25rem 0.6rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Remove</button>
+                </div>
+              ) : (
+                <div onClick={() => watermarkInputRef.current?.click()} style={{ background: "#131318", border: "2px dashed rgba(255,255,255,0.15)", borderRadius: "10px", padding: "0.75rem", textAlign: "center", cursor: "pointer", marginBottom: "0.75rem" }}>
+                  <Upload size={20} style={{ color: "var(--accent)", marginBottom: "0.2rem" }} />
+                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#fff" }}>Click to Upload Logo</div>
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.7rem", color: "#aaa", marginBottom: "0.2rem", fontWeight: 600 }}>Position</label>
+                  <select value={watermarkPosition} onChange={e => setWatermarkPosition(e.target.value)} style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", padding: "0.35rem 0.5rem", fontSize: "0.72rem", fontWeight: 600 }}>
+                    <option value="top_right">Top Right</option>
+                    <option value="top_left">Top Left</option>
+                    <option value="bottom_right">Bottom Right</option>
+                    <option value="bottom_left">Bottom Left</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.7rem", color: "#aaa", marginBottom: "0.2rem", fontWeight: 600 }}>Opacity ({watermarkOpacity}%)</label>
+                  <input type="range" min={10} max={100} value={watermarkOpacity} onChange={e => setWatermarkOpacity(parseInt(e.target.value, 10))} style={{ width: "100%", accentColor: "var(--accent)", cursor: "pointer", marginTop: "0.35rem" }} />
+                </div>
               </div>
             </div>
 
