@@ -1,0 +1,5 @@
+ALTER TABLE tasks ADD COLUMN highlight_color TEXT NOT NULL DEFAULT '#FFE000';
+ALTER TABLE tasks ADD COLUMN caption_animation TEXT NOT NULL DEFAULT 'word_pop';
+ALTER TABLE tasks ADD COLUMN auto_emojis INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN watermark_position TEXT NOT NULL DEFAULT 'top_right';
+ALTER TABLE tasks ADD COLUMN watermark_opacity REAL NOT NULL DEFAULT 0.8;
