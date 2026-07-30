@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, RefreshCw, XCircle, Play, Pause, Download, ExternalLink, Trash2, Copy, Zap, Flame, Radio, Mic, Brain, Crop, Sparkles, CheckCircle2, MessageCircle, Send, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, XCircle, Play, Pause, Download, ExternalLink, Trash2, Copy, Zap, Flame, Radio, Mic, Brain, Crop, Sparkles, CheckCircle2, MessageCircle, Send, X, Film } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
@@ -32,10 +32,12 @@ interface Task {
   progress_message: string;
   source_url: string;
   source_title: string;
+  source_type: string;
   aspect_ratio: string;
   num_clips: number;
   clips: Clip[];
   error_message?: string;
+  studio_payload?: any;
 }
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
@@ -242,11 +244,14 @@ export default function TaskPage() {
         const t = await api.getTask(id);
         if (!mounted) return;
         setTask(t);
+        if (t.source_type === "studio" || t.source_url?.startsWith("studio://")) {
+          sessionStorage.setItem("nova_last_task_type", "studio");
+        }
         setStatus(t.status);
         setProgress(t.progress || 0);
         setMessage(t.progress_message || "");
       } catch (e) {
-        toast.error("Task not found");
+        // SSE will retry; suppress toast on first load
       } finally {
         setLoading(false);
       }
@@ -315,9 +320,18 @@ export default function TaskPage() {
             <Link to="/history" className="btn btn-ghost btn-icon" style={{ background: "#16161c" }}><ArrowLeft size={18} /></Link>
             <div>
               <h1 style={{ fontSize: "1.25rem", fontWeight: 800, margin: 0, overflow: "hidden", textOverflow: "ellipsis", maxWidth: "600px" }}>
-                {task?.source_title || task?.source_url || "Processing Video"}
+                {task?.source_title || (task?.source_url?.startsWith("studio://") ? "Nova Studio AI Video" : task?.source_url || "Processing Video")}
               </h1>
               <span style={{ fontSize: "0.78rem", color: "#888" }}>Task ID: {id?.slice(0, 12)}...</span>
+              {(task?.source_url?.startsWith("studio://") || task?.source_type === "studio") ? (
+                <span style={{ marginLeft: "0.5rem", fontSize: "0.68rem", fontWeight: 900, padding: "0.15rem 0.55rem", borderRadius: "999px", background: "rgba(139,92,246,0.2)", color: "#8b5cf6", border: "1px solid rgba(139,92,246,0.3)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Faceless AI
+                </span>
+              ) : (
+                <span style={{ marginLeft: "0.5rem", fontSize: "0.68rem", fontWeight: 900, padding: "0.15rem 0.55rem", borderRadius: "999px", background: "rgba(255,224,0,0.15)", color: "var(--accent)", border: "1px solid rgba(255,224,0,0.25)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Clip
+                </span>
+              )}
             </div>
           </div>
 
@@ -336,8 +350,20 @@ export default function TaskPage() {
         </div>
 
         {/* High-Tech Visual Pipeline Progression Stepper */}
-        {status !== "completed" && status !== "error" && (() => {
-          const PIPELINE_STAGES = [
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "3rem 0", color: "#666" }}>
+            <div className="spinner" style={{ width: 32, height: 32, border: "3px solid rgba(255,255,255,0.08)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 1rem" }} />
+            <span>Loading task...</span>
+          </div>
+        ) : status !== "completed" && status !== "error" && task && (() => {
+          const isStudio = task.source_url?.startsWith("studio://") || task.source_type === "studio";
+          const PIPELINE_STAGES = isStudio ? [
+            { id: "decompose", label: "AI Script Decompose", threshold: 10, Icon: Brain },
+            { id: "tts", label: "Voice Synthesis", threshold: 30, Icon: Mic },
+            { id: "scrape", label: "Stock Media Scrape", threshold: 50, Icon: Download },
+            { id: "stitch", label: "Scene Stitching", threshold: 75, Icon: Film },
+            { id: "render", label: "Captions & Finalize", threshold: 100, Icon: Sparkles },
+          ] : [
             { id: "download", label: "Download Stream", threshold: 20, Icon: Download },
             { id: "transcribe", label: "Speech Recognition", threshold: 45, Icon: Mic },
             { id: "analyze", label: "Virality Scoring", threshold: 70, Icon: Brain },
@@ -351,7 +377,7 @@ export default function TaskPage() {
               animate={{ opacity: 1, scale: 1 }}
               style={{
                 background: "#131318",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
+                border: `1px solid ${isStudio ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.12)"}`,
                 borderRadius: "20px",
                 padding: "2rem 1.75rem",
                 marginBottom: "2rem",
@@ -360,12 +386,12 @@ export default function TaskPage() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.75rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255, 224, 0, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Radio size={20} color="var(--accent)" className="pulse" />
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: isStudio ? "rgba(139,92,246,0.15)" : "rgba(255, 224, 0, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Radio size={20} color={isStudio ? "#8b5cf6" : "var(--accent)"} className="pulse" />
                   </div>
                   <div>
-                    <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#fff" }}>{message || "Processing Video..."}</h3>
-                    <span style={{ fontSize: "0.78rem", color: "#888" }}>AI Pipeline Stage Active</span>
+                    <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#fff" }}>{message || (isStudio ? "Generating AI Video..." : "Processing Video...")}</h3>
+                    <span style={{ fontSize: "0.78rem", color: "#888" }}>{isStudio ? "Nova Studio Pipeline" : "Clipper Pipeline"}</span>
                   </div>
                 </div>
                 <div style={{ background: "rgba(255, 224, 0, 0.12)", border: "1px solid rgba(255, 224, 0, 0.3)", borderRadius: "999px", padding: "0.35rem 0.9rem" }}>
@@ -374,7 +400,7 @@ export default function TaskPage() {
               </div>
 
               {/* Step Progression Bar */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.5rem", position: "relative", marginBottom: "1.5rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${PIPELINE_STAGES.length}, 1fr)`, gap: "0.5rem", position: "relative", marginBottom: "1.5rem" }}>
                 {PIPELINE_STAGES.map((stg, idx) => {
                   const IconComponent = stg.Icon;
                   const isDone = progress >= stg.threshold;
@@ -391,16 +417,16 @@ export default function TaskPage() {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          background: isDone ? "#22c55e" : isActive ? "var(--accent)" : "#09090c",
+                          background: isDone ? "#22c55e" : isActive ? (isStudio ? "#8b5cf6" : "var(--accent)") : "#09090c",
                           color: isDone || isActive ? "#000" : "#666",
-                          border: `2px solid ${isDone ? "#22c55e" : isActive ? "var(--accent)" : "rgba(255,255,255,0.1)"}`,
-                          boxShadow: isActive ? "0 0 20px rgba(255, 224, 0, 0.5)" : isDone ? "0 0 15px rgba(34, 197, 94, 0.3)" : "none",
+                          border: `2px solid ${isDone ? "#22c55e" : isActive ? (isStudio ? "#8b5cf6" : "var(--accent)") : "rgba(255,255,255,0.1)"}`,
+                          boxShadow: isActive ? `0 0 20px ${isStudio ? "rgba(139,92,246,0.5)" : "rgba(255, 224, 0, 0.5)"}` : isDone ? "0 0 15px rgba(34, 197, 94, 0.3)" : "none",
                           transition: "all 0.3s",
                         }}
                       >
                         {isDone ? <CheckCircle2 size={20} color="#000" /> : <IconComponent size={20} color={isActive ? "#000" : "#666"} />}
                       </div>
-                      <span style={{ fontSize: "0.75rem", fontWeight: isActive ? 800 : 600, color: isActive ? "var(--accent)" : isDone ? "#fff" : "#666", display: "block" }}>
+                      <span style={{ fontSize: "0.75rem", fontWeight: isActive ? 800 : 600, color: isActive ? (isStudio ? "#8b5cf6" : "var(--accent)") : isDone ? "#fff" : "#666", display: "block" }}>
                         {stg.label}
                       </span>
                     </div>
@@ -410,7 +436,7 @@ export default function TaskPage() {
 
               {/* Progress Track */}
               <div style={{ background: "#09090c", height: "8px", borderRadius: "4px", overflow: "hidden" }}>
-                <div style={{ width: `${progress}%`, background: "linear-gradient(90deg, var(--accent) 0%, #22c55e 100%)", height: "100%", transition: "width 0.4s ease-out" }} />
+                <div style={{ width: `${progress}%`, background: isStudio ? "linear-gradient(90deg, #8b5cf6 0%, #22c55e 100%)" : "linear-gradient(90deg, var(--accent) 0%, #22c55e 100%)", height: "100%", transition: "width 0.4s ease-out" }} />
               </div>
             </motion.div>
           );
