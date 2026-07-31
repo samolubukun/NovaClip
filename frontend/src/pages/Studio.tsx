@@ -320,7 +320,7 @@ export default function Studio() {
                 {ttsProvider === "elevenlabs" && (
                   <input
                     type="text"
-                    placeholder="ElevenLabs Voice ID (e.g., 21m00Tcm4TlvDq8ikWAM)"
+                    placeholder="Voice ID or name (e.g., Bella, Adam, EXAVITQu4vr4xnSDxMaL)"
                     value={elevenVoiceId}
                     onChange={e => setElevenVoiceId(e.target.value)}
                     style={{ width: "100%", marginTop: "0.4rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}

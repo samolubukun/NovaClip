@@ -13,6 +13,20 @@ pub struct WordTimestamp {
     pub end: f64,
 }
 
+/// Free-tier ElevenLabs default voices verified to work without a paid plan.
+/// Library/shared voices (and legacy default IDs) return 402 paid_plan_required.
+const ELEVENLABS_FREE_TIER_VOICES: &[(&str, &str)] = &[
+    ("EXAVITQu4vr4xnSDxMaL", "Bella"),
+    ("ErXwobaYiN019PkySvjV", "Antoni"),
+    ("VR6AewLTigWG4xSOukaG", "Arnold"),
+    ("pNInz6obpgDQGcFmaJgB", "Adam"),
+    ("JBFqnCBsd6RMkjVDRZzb", "George"),
+    ("cgSgspJ2msm6clMCkdW9", "Jessica"),
+];
+
+/// Default voice used when the requested voice is empty, unknown, or not allowlisted.
+const ELEVENLABS_FALLBACK_VOICE: &str = "EXAVITQu4vr4xnSDxMaL";
+
 pub struct TtsEngine {
     pub temp_dir: PathBuf,
     pub elevenlabs_key: String,
@@ -30,7 +44,16 @@ impl TtsEngine {
         info!("Synthesizing TTS with provider '{}', voice '{}' -> {:?}", provider, voice, output_file);
 
         match provider {
-            "elevenlabs" => self.synthesize_elevenlabs(text, voice, &output_file).await?,
+            "elevenlabs" => {
+                if let Err(e) = self.synthesize_elevenlabs(text, voice, &output_file).await {
+                    warn!("ElevenLabs TTS failed ({}); falling back to Deepgram/Edge", e);
+                    if !self.deepgram_key.is_empty() {
+                        self.synthesize_deepgram_aura(text, voice, &output_file).await?;
+                    } else {
+                        self.synthesize_edge_tts(text, voice, &output_file).await?;
+                    }
+                }
+            }
             "deepgram-aura" => self.synthesize_deepgram_aura(text, voice, &output_file).await?,
             _ => self.synthesize_edge_tts(text, voice, &output_file).await?,
         }
@@ -44,7 +67,20 @@ impl TtsEngine {
         info!("Synthesizing full-script TTS ({}) using provider '{}'", text.len(), provider);
 
         let timestamps = match provider {
-            "elevenlabs" => self.synthesize_elevenlabs_full(text, voice, &audio_path).await?,
+            "elevenlabs" => {
+                match self.synthesize_elevenlabs_full(text, voice, &audio_path).await {
+                    Ok(ts) => ts,
+                    Err(e) => {
+                        warn!("ElevenLabs full TTS failed ({}); falling back to Deepgram/Edge", e);
+                        if !self.deepgram_key.is_empty() {
+                            self.synthesize_deepgram_aura(text, voice, &audio_path).await?;
+                            self.transcribe_for_timestamps(&audio_path).await?
+                        } else {
+                            self.synthesize_edge_tts_full(text, voice, &audio_path).await?
+                        }
+                    }
+                }
+            }
             "deepgram-aura" => {
                 self.synthesize_deepgram_aura(text, voice, &audio_path).await?;
                 if !self.deepgram_key.is_empty() {
@@ -228,16 +264,36 @@ impl TtsEngine {
         if venv_python.exists() { venv_python } else { PathBuf::from("python") }
     }
 
+    /// Resolves an ElevenLabs voice ID or name against the free-tier allowlist.
+    /// Anything unknown or not allowlisted silently falls back to Bella so a
+    /// library/shared voice can never reach the API and trigger a 402.
+    fn resolve_elevenlabs_voice(&self, voice: &str) -> String {
+        let v = voice.trim();
+        if !v.is_empty() {
+            if let Some((id, _)) = ELEVENLABS_FREE_TIER_VOICES
+                .iter()
+                .find(|(id, name)| name.eq_ignore_ascii_case(v) || *id == v)
+            {
+                return id.to_string();
+            }
+        }
+        if !v.is_empty() {
+            warn!("ElevenLabs voice '{}' is not on the free-tier allowlist — falling back to Bella", v);
+        }
+        ELEVENLABS_FALLBACK_VOICE.to_string()
+    }
+
     async fn synthesize_elevenlabs(&self, text: &str, voice_id: &str, output: &Path) -> Result<()> {
         if self.elevenlabs_key.is_empty() {
             anyhow::bail!("ElevenLabs API key is missing");
         }
-        let vid = if voice_id.is_empty() || voice_id.len() < 10 { "21m00Tcm4TlvDq8ikWAM" } else { voice_id };
+        let vid = self.resolve_elevenlabs_voice(voice_id);
         let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}", vid);
 
         let body = serde_json::json!({
             "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "model_id": "eleven_multilingual_v2",
+            "output_format": "mp3_44100_128",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.5}
         });
 
@@ -263,12 +319,13 @@ impl TtsEngine {
         if self.elevenlabs_key.is_empty() {
             anyhow::bail!("ElevenLabs API key is missing");
         }
-        let vid = if voice_id.is_empty() || voice_id.len() < 10 { "21m00Tcm4TlvDq8ikWAM" } else { voice_id };
+        let vid = self.resolve_elevenlabs_voice(voice_id);
         let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}/with-timestamps", vid);
 
         let body = serde_json::json!({
             "text": text,
             "model_id": "eleven_multilingual_v2",
+            "output_format": "mp3_44100_128",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
         });
 
