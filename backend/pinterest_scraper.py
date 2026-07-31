@@ -56,38 +56,83 @@ async def scrape_pinterest(query, media_type, output_dir):
 
             for pin_id in pin_links:
                 pin_url = f"https://www.pinterest.com/pin/{pin_id}/"
+                UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+                candidates = []
                 try:
-                    await page.goto(pin_url, timeout=20000, wait_until='domcontentloaded')
-                    await page.wait_for_timeout(3000)
+                    pin_page = await context.new_page()
+                    pin_page.on("response", lambda res: candidates.append(res.url))
+                    await pin_page.goto(pin_url, timeout=20000, wait_until='domcontentloaded')
+                    await pin_page.wait_for_timeout(2500)
 
-                    media_url = await page.evaluate('''
+                    # Trigger playback so HLS segments get requested through the network
+                    try:
+                        await pin_page.evaluate('''() => {
+                            const v = document.querySelector('video');
+                            if (v) { v.muted = true; v.play().catch(() => {}); }
+                        }''')
+                        await pin_page.wait_for_timeout(2500)
+                    except Exception:
+                        pass
+
+                    # DOM-extracted media src as an extra candidate
+                    dom_media = await pin_page.evaluate('''
                         () => {
                             const video = document.querySelector('video');
                             if (video) {
                                 const src = video.getAttribute('src') || video.querySelector('source')?.getAttribute('src');
-                                if (src) return src;
+                                if (src && !src.startsWith('blob:')) return src;
                             }
-                            const img = document.querySelector('img[src*="originals"], img[src*="236x"]');
-                            if (img) return img.getAttribute('src') || img.getAttribute('data-src');
-                            const meta = document.querySelector('meta[property="og:image"], meta[property="og:video"]');
+                            const meta = document.querySelector('meta[property="og:video"], meta[property="og:video:url"]');
                             if (meta) return meta.getAttribute('content');
                             return null;
                         }
                     ''')
+                    if dom_media:
+                        candidates.append(dom_media)
+                    await pin_page.close()
 
-                    if media_url:
-                        import requests as req
-                        resp = req.get(media_url, headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
-                        }, timeout=15)
-                        if resp.status_code == 200:
-                            temp = folder / f"temp_{pin_id}{ext}"
-                            with open(temp, 'wb') as f:
-                                f.write(resp.content)
-                            temp.rename(out_file)
-                            print(str(out_file))
-                            await browser.close()
-                            return 0
+                    # Prefer HLS playlists, then direct MP4s (network captured during playback)
+                    hls_urls = [u for u in candidates if 'm3u8' in u.lower()]
+                    mp4_urls = [u for u in candidates if re.search(r'\.mp4(?:\?|$)', u.lower())]
+                    media_urls = list(dict.fromkeys(hls_urls + mp4_urls))
+
+                    for media_url in media_urls:
+                        try:
+                            if 'm3u8' in media_url.lower():
+                                import yt_dlp
+                                ydl_opts = {
+                                    'format': 'best[ext=mp4]/bestvideo+bestaudio/best',
+                                    'outtmpl': str(folder / f"hls_{pin_id}.%(ext)s"),
+                                    'quiet': True,
+                                    'noplaylist': True,
+                                    'nocheckcertificate': True,
+                                    'socket_timeout': 15,
+                                    'http_headers': {'User-Agent': UA},
+                                }
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                    ydl.extract_info(media_url, download=True)
+                                for f in folder.glob(f"hls_{pin_id}.*"):
+                                    if f.suffix.lower() in ('.mp4', '.mkv', '.webm'):
+                                        f.rename(out_file)
+                                        print(str(out_file))
+                                        await browser.close()
+                                        return 0
+                                    f.unlink(missing_ok=True)
+                            else:
+                                import requests as req
+                                resp = req.get(media_url, headers={'User-Agent': UA}, timeout=20)
+                                ctype = resp.headers.get('content-type', '')
+                                is_image = ctype.startswith('image/') or resp.content[:3] == b'\xff\xd8\xff'
+                                if resp.status_code == 200 and not is_image and len(resp.content) > 50_000:
+                                    temp = folder / f"temp_{pin_id}{ext}"
+                                    with open(temp, 'wb') as f:
+                                        f.write(resp.content)
+                                    temp.rename(out_file)
+                                    print(str(out_file))
+                                    await browser.close()
+                                    return 0
+                        except Exception as e:
+                            print(f"Pin {pin_id} media download failed: {e}", file=sys.stderr)
 
                 except Exception as e:
                     print(f"Pin {pin_id} failed: {e}", file=sys.stderr)

@@ -35,6 +35,7 @@ pub fn tasks_router() -> Router<AppState> {
         .route("/tasks/{id}/clips/merge", post(merge_clips))
         .route("/tasks/{id}/watermark", post(upload_watermark))
         .route("/tasks/ai-prompt", post(ai_prompt_handler))
+        .route("/tasks/ai-prompt/chat", post(ai_chat_handler))
 }
 
 #[derive(Deserialize)]
@@ -485,6 +486,109 @@ async fn ai_prompt_handler(
         "message": "Task created from AI prompt",
         "params": params,
     })))
+}
+
+#[derive(Deserialize)]
+struct AiChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct AiChatRequest {
+    url: String,
+    params: Option<Value>,
+    messages: Vec<AiChatMessage>,
+    gemini_api_key: Option<String>,
+}
+
+const AI_CHAT_SYSTEM_PROMPT: &str = r##"You are Nova, the friendly conversational AI video editor inside NovaClip. The user pasted a video URL and wants you to turn it into viral short clips. Hold a short conversation to lock in the clip settings BEFORE any processing starts, then hand off to the clipping pipeline.
+
+The video URL is: URL_PLACEHOLDER
+
+Settings already decided so far (may be partial or empty): PARAMS_PLACEHOLDER
+
+Gather, ONE question at a time, any of these that are still missing (never re-ask something already decided unless the user changes their mind):
+1. Orientation (field "aspect_ratio"): "9:16" vertical, "1:1" square, "16:9" widescreen, "original" (no crop)
+2. Number of clips (field "num_clips"): whole number 1-30
+3. Burn-in karaoke captions (field "add_subtitles"): true (yes) or false (no)
+4. Caption language (field "translate_language"): "" for the original audio language, otherwise one of en, es, fr, de, it, pt, nl, ru, zh, zh-TW, ja, ko, ar, hi, bn, tr, vi, th, id, pl, uk, sv
+5. Caption style (field "caption_template"): "default", "bold", "vibrant", "tiktok", "neon", "podcast", "minimal", "cinematic", "cyber", "clean"
+6. AI subject-tracking reframe (field "auto_vertical_reframe"): true/false — only relevant when orientation is 9:16
+7. Originality boost (field "originality_boost"): "none", "light", "balanced", "strong"
+
+Keep questions casual and short, like a helpful friend, and offer 2-5 clickable options per question. If the user says "you decide", "just do it", "surprise me", etc., stop asking and pick smart defaults.
+
+When every setting is resolved, respond with type "ready", the complete params object, and a 1-2 sentence summary of what will be produced.
+
+Respond ONLY with valid JSON matching exactly one of these two schemas:
+
+Question (you still need more info):
+{"type": "question", "field": "aspect_ratio", "question": "What orientation should the clips be in?", "options": [{"label": "Vertical 9:16", "value": "9:16"}, {"label": "Square 1:1", "value": "1:1"}, {"label": "Widescreen 16:9", "value": "16:9"}, {"label": "Original (no crop)", "value": "original"}], "params": {"aspect_ratio": "9:16"}}
+
+Ready (everything is locked in):
+{"type": "ready", "params": {"aspect_ratio": "9:16", "num_clips": 5, "add_subtitles": true, "caption_template": "default", "translate_language": "", "auto_vertical_reframe": true, "reframe_preset": "talking_head", "originality_boost": "none"}, "summary": "I'll cut 5 vertical shorts with AI subject tracking and burned-in karaoke captions."}
+
+Rules:
+- option labels are human-readable; option values and params values must be exact machine values listed above.
+- Always include "field" and the running "params" object on question responses. The "params" object in question responses should merge in anything just decided.
+- Never ask for or mention the video URL — it is already set.
+- If the user's last message is off-topic, respond with type "question", field "general", and a friendly question steering back to the clip settings."##;
+
+async fn ai_chat_handler(
+    State(state): State<AppState>,
+    Json(req): Json<AiChatRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let gemini_key = req.gemini_api_key
+        .filter(|k| !k.trim().is_empty())
+        .or_else(|| std::env::var("GEMINI_API_KEY").ok().filter(|k| !k.trim().is_empty()))
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(json!({"error": "Gemini API key required"}))))?;
+
+    let gemini_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.1-flash-lite".into());
+
+    if req.messages.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "messages cannot be empty"}))));
+    }
+
+    let decided = req.params.unwrap_or(json!({}));
+    let system_prompt = AI_CHAT_SYSTEM_PROMPT
+        .replace("URL_PLACEHOLDER", &req.url)
+        .replace("PARAMS_PLACEHOLDER", &decided.to_string());
+
+    let contents: Vec<Value> = req.messages.iter().map(|m| {
+        json!({
+            "role": if m.role.eq_ignore_ascii_case("assistant") { "model" } else { "user" },
+            "parts": [{"text": m.content}]
+        })
+    }).collect();
+
+    let body = json!({
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": contents,
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048, "responseMimeType": "application/json"}
+    });
+
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", gemini_model, gemini_key);
+    let resp = reqwest::Client::new().post(&url).json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Gemini error: {}", e)}))))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err((StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Gemini error {}: {}", status, text)}))));
+    }
+
+    let text = resp.json::<Value>().await
+        .ok().and_then(|r| r.pointer("/candidates/0/content/parts/0/text").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .ok_or_else(|| (StatusCode::BAD_GATEWAY, Json(json!({"error": "Empty Gemini response"}))))?;
+
+    let clean = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+    let parsed: Value = serde_json::from_str(clean)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Parse error: {}", e)}))))?;
+
+    Ok(Json(parsed))
 }
 
 /// SSE progress stream — polls the tasks table every second instead of Redis pub/sub.

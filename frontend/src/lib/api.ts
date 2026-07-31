@@ -154,4 +154,15 @@ export const api = {
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     return r.json();
   },
+
+  async aiChat(url: string, params: object, messages: { role: string; content: string }[]) {
+    const geminiKey = localStorage.getItem("novaclip_gemini_key");
+    const r = await fetch(`${API_BASE}/tasks/ai-prompt/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, params, messages, ...(geminiKey ? { gemini_api_key: geminiKey } : {}) }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
 };

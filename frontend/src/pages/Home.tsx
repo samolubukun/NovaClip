@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, Minus, Check, Sliders, Cpu, Wand2, Languages, MessageSquareText, FormInput } from "lucide-react";
+import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, Minus, Check, Sliders, Cpu, Wand2, Languages, MessageSquareText, FormInput, Send } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
@@ -24,6 +24,18 @@ const CAPTION_TEMPLATES = [
   { id: "cyber",   label: "Cyber Lime", color: "#39FF14", bg: "transparent", textColor: "#39FF14", highlightColor: "#00FFFF" },
   { id: "clean",   label: "Clean Dark", color: "#FFE000", bg: "rgba(20,20,22,0.9)", textColor: "#FFFFFF", highlightColor: "#FFE000" },
 ];
+
+interface ChatOption {
+  label: string;
+  value: string;
+  field: string;
+}
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  options?: ChatOption[];
+}
 
 export default function Home() {
   const nav = useNavigate();
@@ -60,7 +72,10 @@ export default function Home() {
   const [translateLanguage, setTranslateLanguage] = useState("");
   const [loading, setLoading] = useState(false);
   const [inputMode, setInputMode] = useState<"form" | "ai">("form");
-  const [aiInstruction, setAiInstruction] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatParams, setChatParams] = useState<Record<string, any>>({});
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   const updateClipCount = (val: number) => {
     const clamped = Math.min(30, Math.max(1, val));
@@ -144,27 +159,52 @@ export default function Home() {
     }
   };
 
-  const aiSubmit = async () => {
-    if (loading || !aiInstruction.trim()) return;
-    setLoading(true);
+  const sendChat = async (overrideText?: string, fieldValue?: { field: string; value: any }) => {
+    const text = (overrideText ?? chatInput).trim();
+    if (chatLoading || !text) return;
+    if (tab === "url" && !url.trim()) { toast.error("Paste a video URL first"); return; }
+    if (tab === "upload" && !file) { toast.error("Select a video file first"); return; }
+    setChatInput("");
+    setChatLoading(true);
+
+    const nextMessages = [...chatMessages, { role: "user" as const, text }];
+    setChatMessages(nextMessages);
+
     try {
       let sourceUrl = "";
       if (tab === "url") {
-        if (!url.trim()) { toast.error("Enter a YouTube URL"); setLoading(false); return; }
         sourceUrl = url.trim();
       } else {
-        if (!file) { toast.error("Select a video file"); setLoading(false); return; }
-        const uploadResult = await api.uploadVideo(file, setUploadPct);
+        const uploadResult = await api.uploadVideo(file!, setUploadPct);
         sourceUrl = uploadResult.video_path;
       }
-      const result = await api.aiPrompt(sourceUrl, aiInstruction.trim());
-      toast.success("AI understood! Creating clips...");
-      nav(`/task/${result.task_id}`);
+
+      const baseParams = fieldValue ? { ...chatParams, [fieldValue.field]: fieldValue.value } : chatParams;
+      const result = await api.aiChat(
+        sourceUrl,
+        baseParams,
+        nextMessages.map(m => ({ role: m.role, content: m.text }))
+      );
+
+      if (result.type === "ready") {
+        setChatMessages(prev => [...prev, { role: "assistant", text: result.summary || "Creating your clips now..." }]);
+        const task = await api.createTask({ url: sourceUrl, ...result.params });
+        toast.success("Task created! Processing started.");
+        nav(`/task/${task.task_id}`);
+        return;
+      }
+
+      if (result.params) setChatParams(prev => ({ ...prev, ...result.params }));
+      const options = (result.options || []).map((o: any) => ({ label: o.label, value: o.value, field: result.field || "" }));
+      setChatMessages(prev => [...prev, {
+        role: "assistant",
+        text: result.question || "Let's get your clips configured.",
+        options: options.length ? options : undefined,
+      }]);
     } catch (e: any) {
-      toast.error(e.message || "Failed to create task");
+      setChatMessages(prev => [...prev, { role: "assistant", text: `Error: ${e.message}` }]);
     } finally {
-      setLoading(false);
-      setUploadPct(0);
+      setChatLoading(false);
     }
   };
 
@@ -336,7 +376,15 @@ export default function Home() {
                   <FormInput size={15} /> Form
                 </button>
                 <button
-                  onClick={() => setInputMode("ai")}
+                  onClick={() => {
+                    setInputMode("ai");
+                    if (chatMessages.length === 0) {
+                      setChatMessages([{
+                        role: "assistant",
+                        text: "Hey, I'm Nova! Paste a video link (or upload a file) above, then tell me what kind of clips you want — or just say \"make me viral clips\" and I'll ask you a few quick questions before I start clipping.",
+                      }]);
+                    }
+                  }}
                   style={{
                     flex: 1, padding: "0.5rem", fontSize: "0.82rem", fontWeight: 700, borderRadius: "8px",
                     background: inputMode === "ai" ? "var(--accent)" : "transparent",
@@ -354,35 +402,81 @@ export default function Home() {
                 <div style={{ marginBottom: "1.5rem" }}>
                   <div style={{
                     background: "#08080a", border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "14px", padding: "1rem",
+                    borderRadius: "14px", padding: "0.9rem",
+                    display: "flex", flexDirection: "column", gap: "0.6rem",
+                    maxHeight: "300px", overflowY: "auto",
                   }}>
+                    {chatMessages.length === 0 && (
+                      <div style={{ fontSize: "0.78rem", color: "#888", textAlign: "center", padding: "1rem 0" }}>
+                        Paste a video URL or upload a file above, then start chatting below.
+                      </div>
+                    )}
+                    {chatMessages.map((m, i) => (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                        <div style={{
+                          maxWidth: "88%", padding: "0.5rem 0.75rem", borderRadius: "12px",
+                          fontSize: "0.82rem", lineHeight: 1.45, whiteSpace: "pre-wrap",
+                          background: m.role === "user" ? "var(--accent)" : "#131318",
+                          color: m.role === "user" ? "#000" : "#ddd",
+                          fontWeight: m.role === "user" ? 700 : 400,
+                          border: m.role === "user" ? "none" : "1px solid rgba(255,255,255,0.08)",
+                        }}>
+                          {m.text}
+                        </div>
+                        {m.options && m.options.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.45rem", maxWidth: "100%" }}>
+                            {m.options.map((opt, oi) => (
+                              <button
+                                key={oi}
+                                disabled={chatLoading}
+                                onClick={() => sendChat(opt.label, { field: opt.field, value: opt.value })}
+                                style={{
+                                  background: "rgba(255,224,0,0.12)", border: "1px solid rgba(255,224,0,0.4)",
+                                  color: "var(--accent)", borderRadius: "999px", padding: "0.3rem 0.75rem",
+                                  fontSize: "0.74rem", fontWeight: 700, cursor: chatLoading ? "not-allowed" : "pointer",
+                                  opacity: chatLoading ? 0.5 : 1,
+                                }}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div style={{ alignSelf: "flex-start", background: "#131318", padding: "0.5rem 0.75rem", borderRadius: "12px", fontSize: "0.8rem", color: "#888" }}>
+                        Nova is thinking...
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
                     <textarea
-                      value={aiInstruction}
-                      onChange={e => setAiInstruction(e.target.value)}
-                      placeholder='Describe what you want — e.g. "Find the 5 most viral moments, make them vertical with captions, apply a balanced originality boost, and add reaction emojis"'
-                      rows={4}
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                      placeholder="Ask for clips, or answer Nova's questions..."
+                      rows={2}
                       style={{
-                        width: "100%", background: "transparent", border: "none",
-                        color: "#fff", fontSize: "0.9rem", resize: "none",
-                        outline: "none", fontFamily: "inherit", lineHeight: 1.5,
+                        flex: 1, background: "#08080a", border: "1px solid rgba(255,255,255,0.16)",
+                        color: "#fff", fontSize: "0.85rem", resize: "none", borderRadius: "12px",
+                        padding: "0.65rem 0.9rem", outline: "none", fontFamily: "inherit", lineHeight: 1.4,
                       }}
                     />
+                    <button
+                      onClick={() => sendChat()}
+                      disabled={chatLoading || !chatInput.trim()}
+                      style={{
+                        background: "var(--accent)", border: "none", borderRadius: "12px",
+                        padding: "0 1rem", cursor: chatLoading || !chatInput.trim() ? "not-allowed" : "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        opacity: chatLoading || !chatInput.trim() ? 0.5 : 1,
+                      }}
+                    >
+                      <Send size={18} color="#000" />
+                    </button>
                   </div>
-                  <button
-                    className="btn btn-primary btn-lg"
-                    style={{
-                      width: "100%", marginTop: "0.75rem",
-                      background: "var(--accent)", color: "#000", fontWeight: 900,
-                      fontSize: "1rem", borderRadius: "12px", border: "none",
-                      padding: "0.85rem", boxShadow: "0 0 25px rgba(255,224,0,0.25)",
-                      cursor: "pointer", opacity: loading || !aiInstruction.trim() ? 0.5 : 1,
-                    }}
-                    onClick={aiSubmit}
-                    disabled={loading || !aiInstruction.trim()}
-                  >
-                    {loading ? <><div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /><span>AI is thinking...</span></>
-                      : <><Sparkles size={18} /> Let AI Create Clips</>}
-                  </button>
                 </div>
               )}
 
