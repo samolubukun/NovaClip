@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY --from=builder /build/target/release/novaclip-api ./
 COPY --from=builder /build/migrations ./migrations
+COPY pinterest_scraper.py edge_tts_runner.py ./
 RUN mkdir -p outputs temp/uploads
 ENV PATH="/app/venv/bin:${PATH}"
 EXPOSE 8000
@@ -47,6 +48,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY --from=builder /build/target/release/novaclip-worker ./
 COPY novaclip_reframe ./novaclip_reframe
+COPY pinterest_scraper.py edge_tts_runner.py ./
 RUN mkdir -p outputs temp/uploads
 ENV PATH="/app/venv/bin:${PATH}"
 CMD ["./novaclip-worker"]

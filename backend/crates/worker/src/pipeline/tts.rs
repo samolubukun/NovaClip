@@ -54,8 +54,7 @@ impl TtsEngine {
                 }
             }
             _ => {
-                self.synthesize_edge_tts(text, voice, &audio_path).await?;
-                self.estimate_word_timestamps(text, &audio_path).await
+                self.synthesize_edge_tts_full(text, voice, &audio_path).await?
             }
         };
 
@@ -171,6 +170,62 @@ impl TtsEngine {
         );
         let _ = Command::new("python").arg("-c").arg(&py_code).arg(text).arg(&out_str).status().await;
         Ok(())
+    }
+
+    /// Full-script Edge-TTS via the runner script, which captures WordBoundary
+    /// events for near-accurate word-level timestamps. Falls back to the old
+    /// even-spread estimate if the script or python is unavailable.
+    async fn synthesize_edge_tts_full(&self, text: &str, voice: &str, output: &Path) -> Result<Vec<WordTimestamp>> {
+        let json_path = output.with_extension("json");
+        let script = self.edge_runner_script();
+        let python_bin = self.python_bin();
+
+        if let Some(script) = script {
+            let status = Command::new(&python_bin)
+                .arg(&script)
+                .arg(text)
+                .arg(if voice.is_empty() { "en-US-ChristopherNeural" } else { voice })
+                .arg(output.to_string_lossy().to_string())
+                .arg(json_path.to_string_lossy().to_string())
+                .status().await;
+
+            if let Ok(s) = status {
+                if s.success() {
+                    if let Ok(data) = tokio::fs::read_to_string(&json_path).await {
+                        if let Ok(parsed) = serde_json::from_str::<Vec<Value>>(&data) {
+                            let words: Vec<WordTimestamp> = parsed.iter().filter_map(|v| {
+                                Some(WordTimestamp {
+                                    word: v["word"].as_str()?.to_string(),
+                                    start: v["start"].as_f64()?,
+                                    end: v["end"].as_f64()?,
+                                })
+                            }).collect();
+                            if !words.is_empty() {
+                                info!("Edge-TTS returned {} real word timestamps", words.len());
+                                return Ok(words);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        warn!("Edge-TTS word timestamps unavailable — falling back to even-spread estimate");
+        self.synthesize_edge_tts(text, voice, output).await?;
+        Ok(self.estimate_word_timestamps(text, output).await)
+    }
+
+    fn edge_runner_script(&self) -> Option<PathBuf> {
+        let candidates = [
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("edge_tts_runner.py"),
+            PathBuf::from("edge_tts_runner.py"),
+        ];
+        candidates.into_iter().find(|p| p.exists())
+    }
+
+    fn python_bin(&self) -> PathBuf {
+        let venv_python = Path::new("novaclip_reframe").join("venv").join("Scripts").join("python.exe");
+        if venv_python.exists() { venv_python } else { PathBuf::from("python") }
     }
 
     async fn synthesize_elevenlabs(&self, text: &str, voice_id: &str, output: &Path) -> Result<()> {
