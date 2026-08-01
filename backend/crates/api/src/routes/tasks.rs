@@ -153,6 +153,7 @@ struct CreateTaskRequest {
     filtered_words: Option<Vec<String>>,
     gemini_api_key: Option<String>,
     deepgram_api_key: Option<String>,
+    stt_provider: Option<String>,
     auto_vertical_reframe: Option<bool>,
     reframe_preset: Option<String>,
     reframe_frame_skip: Option<i32>,
@@ -233,6 +234,7 @@ async fn create_task(
     let split_divider = if req.split_divider.unwrap_or(false) { 1i32 } else { 0i32 };
     let originality_boost = req.originality_boost.clone().unwrap_or_else(|| "none".into());
     let translate_language = req.translate_language.clone().unwrap_or_default();
+    let stt_provider = req.stt_provider.clone().unwrap_or_else(|| "deepgram".into());
     let studio_payload_json = req.studio_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
 
     let source_title = req.source_title.unwrap_or_else(|| url.clone());
@@ -251,12 +253,12 @@ async fn create_task(
            (id, source_url, source_title, source_type, aspect_ratio, num_clips, font_family, font_size,
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
-            gemini_api_key, deepgram_api_key, auto_vertical_reframe, reframe_preset,
+            gemini_api_key, deepgram_api_key, stt_provider, auto_vertical_reframe, reframe_preset,
             reframe_frame_skip, reframe_layout, speaker_active_switch, split_divider,
             originality_boost, translate_language, giphy_api_key,
             studio_payload, highlight_color, caption_animation, auto_emojis,
             watermark_position, watermark_opacity)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
@@ -277,6 +279,7 @@ async fn create_task(
     .bind(&filtered_words_json)
     .bind(req.gemini_api_key)
     .bind(req.deepgram_api_key)
+    .bind(&stt_provider)
     .bind(auto_vertical_reframe)
     .bind(&reframe_preset)
     .bind(reframe_frame_skip)
@@ -353,6 +356,7 @@ async fn get_task(
         "speaker_active_switch": task.speaker_active_switch,
         "split_divider": task.split_divider,
         "originality_boost": task.originality_boost,
+        "stt_provider": task.stt_provider,
 
         "translate_language": task.translate_language,
         "stage_timings": stage_timings,
@@ -483,21 +487,23 @@ async fn ai_prompt_handler(
     let originality_boost = params["originality_boost"].as_str().unwrap_or("none");
     let translate_language = params["translate_language"].as_str().unwrap_or("");
 
+    let stt_provider = params["stt_provider"].as_str().unwrap_or("deepgram");
+
     sqlx::query(
         r#"INSERT INTO tasks
            (id, source_url, source_type, aspect_ratio, num_clips, font_family, font_size,
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
-            gemini_api_key, auto_vertical_reframe, reframe_preset, reframe_frame_skip,
+            gemini_api_key, stt_provider, auto_vertical_reframe, reframe_preset, reframe_frame_skip,
             reframe_layout, speaker_active_switch, split_divider,
             originality_boost, translate_language)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&req.url).bind(source_type).bind(aspect_ratio).bind(num_clips)
     .bind("THEBOLDFONT").bind(32).bind("#FFFFFF").bind(caption_template)
     .bind(add_subtitles).bind(0).bind("fast").bind(0).bind(900).bind(0).bind("[]")
-    .bind(&gemini_key)
+    .bind(&gemini_key).bind(stt_provider)
     .bind(auto_vertical_reframe).bind(reframe_preset).bind(1)
     .bind(reframe_layout).bind(speaker_active_switch).bind(split_divider)
     .bind(originality_boost).bind(translate_language)
@@ -736,6 +742,7 @@ struct ApplySettingsRequest {
     split_divider: Option<bool>,
     originality_boost: Option<String>,
     translate_language: Option<String>,
+    stt_provider: Option<String>,
 }
 
 async fn apply_settings(
@@ -765,6 +772,7 @@ async fn apply_settings(
             split_divider = COALESCE(?, split_divider),
             originality_boost = COALESCE(?, originality_boost),
             translate_language = COALESCE(?, translate_language),
+            stt_provider = COALESCE(?, stt_provider),
             updated_at = datetime('now')
             WHERE id = ?"#
     )
@@ -784,6 +792,7 @@ async fn apply_settings(
     .bind(split_divider)
     .bind(req.originality_boost)
     .bind(req.translate_language)
+    .bind(req.stt_provider)
     .bind(id.to_string())
     .execute(&state.db)
     .await
