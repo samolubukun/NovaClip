@@ -532,6 +532,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--two-person-threshold", type=float, default=0.78)
 
     parser.add_argument(
+        "--layout",
+        choices=["single", "split", "auto"],
+        default="single",
+        help=(
+            "Camera layout: 'single' tracks one subject, 'split' renders two "
+            "side-by-side panes each tracking one person, 'auto' chooses per "
+            "frame based on whether two people are present."
+        ),
+    )
+    parser.add_argument(
+        "--split-divider",
+        action="store_true",
+        help="Draw a thin black divider line between split panes.",
+    )
+
+    parser.add_argument(
         "--saliency-model",
         choices=["auto", "deepgazemr", "handcrafted"],
         default="handcrafted",
@@ -1037,18 +1053,21 @@ def load_speaker_segments(path: str) -> list[dict]:
     return []
 
 
-def active_speaker_bonus(
+def active_speaker_index(
     frame_idx: int,
     fps: float,
     segments: list[dict],
-) -> float:
+) -> Optional[int]:
     if not segments:
-        return 1.0
+        return None
     t = frame_idx / max(fps, 1e-6)
     for seg in segments:
         if seg.get("start", -1) <= t <= seg.get("end", -1):
-            return 1.08
-    return 1.0
+            try:
+                return int(seg.get("speaker"))
+            except (TypeError, ValueError):
+                return None
+    return None
 
 
 def build_candidates(
@@ -1158,11 +1177,14 @@ def build_candidates(
                 framing_cy - frame_cy,
             )
 
-            speaker_is_active = (
-                active_speaker_bonus(frame_idx, fps, speaker_segments) > 1.0
-                if cls_name == "person"
-                else False
-            )
+            active_speaker = active_speaker_index(frame_idx, fps, speaker_segments)
+            speaker_is_active = False
+            if cls_name == "person":
+                assumed_speaker = 0 if framing_cx < w / 2 else 1
+                speaker_is_active = (
+                    active_speaker is not None
+                    and int(assumed_speaker) == int(active_speaker)
+                )
             tracking_match = (
                 state.tracked_id is not None
                 and track_id == state.tracked_id
@@ -1325,6 +1347,8 @@ def apply_camera_motion(
     base_crop_h: int,
     frame_w: int,
     frame_h: int,
+    x_min: Optional[float] = None,
+    x_max: Optional[float] = None,
 ) -> tuple[int, int]:
     obs_weight = clamp(observation.confidence, 0.15, 1.0)
     obs_target_alpha = clamp(args.target_alpha * (0.55 + obs_weight * 0.65), 0.04, 0.4)
@@ -1347,6 +1371,15 @@ def apply_camera_motion(
         frame_h,
     )
 
+    lo_x = crop_w / 2
+    hi_x = frame_w - crop_w / 2
+    if x_min is not None:
+        lo_x = max(lo_x, x_min)
+    if x_max is not None:
+        hi_x = min(hi_x, x_max)
+    if lo_x > hi_x:
+        lo_x = hi_x = (lo_x + hi_x) / 2
+
     state.target_center_x = lerp(
         state.target_center_x,
         observation.center_x,
@@ -1360,8 +1393,8 @@ def apply_camera_motion(
 
     state.target_center_x = clamp(
         state.target_center_x,
-        crop_w / 2,
-        frame_w - crop_w / 2,
+        lo_x,
+        hi_x,
     )
     state.target_center_y = clamp(
         state.target_center_y,
@@ -1388,8 +1421,8 @@ def apply_camera_motion(
 
     state.crop_center_x = clamp(
         next_center_x,
-        crop_w / 2,
-        frame_w - crop_w / 2,
+        lo_x,
+        hi_x,
     )
     state.crop_center_y = clamp(
         next_center_y,
@@ -1625,6 +1658,74 @@ def crop_frame(
     right = left + crop_w
     bottom = top + crop_h
     return frame[top:bottom, left:right], (left, top, right, bottom)
+
+
+def resize_cover(
+    img: np.ndarray,
+    target_w: int,
+    target_h: int,
+) -> np.ndarray:
+    """Resize an image to fill the target while preserving aspect ratio
+    (center-crop the overflow, like CSS object-fit: cover)."""
+    ih, iw = img.shape[:2]
+    if iw <= 0 or ih <= 0:
+        return img
+    scale = max(target_w / iw, target_h / ih)
+    nw = max(1, int(round(iw * scale)))
+    nh = max(1, int(round(ih * scale)))
+    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
+    x = max(0, (nw - target_w) // 2)
+    y = max(0, (nh - target_h) // 2)
+    return resized[y : y + target_h, x : x + target_w]
+
+
+def assign_panes(
+    candidates: list[Candidate],
+    left_key: Optional[tuple[Optional[int], int]],
+    right_key: Optional[tuple[Optional[int], int]],
+) -> Optional[tuple[Candidate, Candidate]]:
+    """Pick the two people for split-screen panes, preferring previously
+    assigned track IDs and falling back to left/right position."""
+    persons = [c for c in candidates if c.cls_name == "person"]
+    if len(persons) < 2:
+        return None
+
+    left = None
+    right = None
+
+    for c in persons:
+        if (
+            left_key is not None
+            and left_key[0] is not None
+            and c.track_id == left_key[0]
+            and c.cls_id == left_key[1]
+        ):
+            left = c
+        if (
+            right_key is not None
+            and right_key[0] is not None
+            and c.track_id == right_key[0]
+            and c.cls_id == right_key[1]
+        ):
+            right = c
+
+    remaining = [c for c in persons if c is not left and c is not right]
+    if left is None and remaining:
+        remaining.sort(key=lambda c: c.framing_cx)
+        left = remaining.pop(0)
+    if right is None and remaining:
+        remaining = [c for c in persons if c is not left and c is not right]
+        if remaining:
+            remaining.sort(key=lambda c: -c.framing_cx)
+            right = remaining.pop(0)
+
+    if left is None or right is None:
+        return None
+    if left.track_id == right.track_id and left.track_id is not None:
+        return None
+    if left is right:
+        return None
+    return left, right
 
 
 def draw_debug(
@@ -1892,6 +1993,26 @@ def process_video(args: argparse.Namespace) -> None:
             target_center_y=frame_h / 2,
             target_zoom=args.min_zoom,
         )
+        left_state = CameraState(
+            crop_center_x=frame_w / 4,
+            crop_center_y=frame_h / 2,
+            zoom=args.min_zoom,
+            target_center_x=frame_w / 4,
+            target_center_y=frame_h / 2,
+            target_zoom=args.min_zoom,
+        )
+        right_state = CameraState(
+            crop_center_x=frame_w * 3 / 4,
+            crop_center_y=frame_h / 2,
+            zoom=args.min_zoom,
+            target_center_x=frame_w * 3 / 4,
+            target_center_y=frame_h / 2,
+            target_zoom=args.min_zoom,
+        )
+        pane_left_key: Optional[tuple[Optional[int], int]] = None
+        pane_right_key: Optional[tuple[Optional[int], int]] = None
+        auto_split_frames = 0
+        use_split = args.layout == "split"
 
         stats = {
             "frames_processed": 0,
@@ -1900,6 +2021,8 @@ def process_video(args: argparse.Namespace) -> None:
             "frames_with_subject": 0,
             "frames_with_face": 0,
             "frames_with_two_person": 0,
+            "frames_split": 0,
+            "frames_single": 0,
         }
 
         last_subject_key = None
@@ -1925,9 +2048,18 @@ def process_video(args: argparse.Namespace) -> None:
                 scene_index += 1
                 state.current_scene_index = scene_index
                 reset_for_new_scene(state, frame_w, frame_h, args.min_zoom)
+                reset_for_new_scene(left_state, frame_w, frame_h, args.min_zoom)
+                reset_for_new_scene(right_state, frame_w, frame_h, args.min_zoom)
+                left_state.crop_center_x = frame_w / 4
+                left_state.target_center_x = frame_w / 4
+                right_state.crop_center_x = frame_w * 3 / 4
+                right_state.target_center_x = frame_w * 3 / 4
                 saliency_helper.reset_temporal_state()
                 stats["scene_resets"] += 1
                 last_subject_key = None
+                pane_left_key = None
+                pane_right_key = None
+                auto_split_frames = 0
 
             saliency_map = saliency_helper.compute_map(frame)
             candidates = build_candidates(
@@ -1954,33 +2086,144 @@ def process_video(args: argparse.Namespace) -> None:
                 args.min_subject_hold_frames,
                 args.switch_score_threshold,
             )
-            pair = (
-                choose_two_person_pair(candidates, args.two_person_threshold)
-                if args.two_person_framing
-                else None
-            )
+            pair = None
+            if args.layout in ("split", "auto"):
+                pane_pair = assign_panes(candidates, pane_left_key, pane_right_key)
+                if args.layout == "split":
+                    use_split = pane_pair is not None
+                else:
+                    if pane_pair is not None:
+                        auto_split_frames += 2
+                    else:
+                        auto_split_frames = max(0, auto_split_frames - 1)
+                    use_split = auto_split_frames >= 14
+                if use_split and pane_pair is not None:
+                    pair = pane_pair
+
+            if (
+                not use_split
+                and args.speaker_aware_mode
+                and speaker_segments
+                and subject is not None
+            ):
+                active_spk = active_speaker_index(frame_idx, fps, speaker_segments)
+                if active_spk is not None:
+                    subj_half = 0 if subject.framing_cx < frame_w / 2 else 1
+                    if (
+                        int(subj_half) != int(active_spk)
+                        and state.frames_since_subject_switch
+                        >= args.min_subject_hold_frames
+                    ):
+                        target = None
+                        for cand in candidates:
+                            if cand.cls_name != "person":
+                                continue
+                            cand_half = 0 if cand.framing_cx < frame_w / 2 else 1
+                            if cand_half == int(active_spk):
+                                if target is None or cand.score > target.score:
+                                    target = cand
+                        if target is not None:
+                            subject = target
+
+            rendered_split = False
+            clean_out = None
+            crop_rect = (0, 0, frame_w, frame_h)
 
             if pair is not None:
                 stats["frames_with_two_person"] += 1
-                observation = build_pair_observation(
-                    pair[0],
-                    pair[1],
-                    base_crop_w,
-                    base_crop_h,
-                    frame_w,
-                    frame_h,
-                    args.min_zoom,
-                    args.max_zoom,
+                stats["frames_split"] += 1
+                left_cand, right_cand = pair
+                if left_cand.framing_cx > right_cand.framing_cx:
+                    left_cand, right_cand = right_cand, left_cand
+                if left_cand.track_id is not None:
+                    pane_left_key = (left_cand.track_id, left_cand.cls_id)
+                if right_cand.track_id is not None:
+                    pane_right_key = (right_cand.track_id, right_cand.cls_id)
+
+                left_obs = build_single_subject_observation(
+                    subject=left_cand,
+                    base_crop_w=base_crop_w,
+                    base_crop_h=base_crop_h,
+                    frame_w=frame_w,
+                    frame_h=frame_h,
+                    min_zoom=args.min_zoom,
+                    max_zoom=args.max_zoom,
                 )
-                crop_w, crop_h = apply_camera_motion(
-                    state,
-                    observation,
+                apply_camera_motion(
+                    left_state,
+                    left_obs,
                     args,
                     base_crop_w,
                     base_crop_h,
                     frame_w,
                     frame_h,
+                    x_min=0.0,
+                    x_max=frame_w / 2,
                 )
+                crop_w, crop_h = current_crop_size(
+                    base_crop_w, base_crop_h, left_state.zoom, frame_w, frame_h
+                )
+                left_crop, _ = crop_frame(
+                    frame,
+                    left_state.crop_center_x,
+                    left_state.crop_center_y,
+                    crop_w,
+                    crop_h,
+                )
+                divider_w = 0
+                if args.split_divider:
+                    divider_w = max(1, args.output_width // 540)
+                pane_w = max(1, (args.output_width - divider_w) // 2)
+                left_pane = resize_cover(left_crop, pane_w, args.output_height)
+
+                right_obs = build_single_subject_observation(
+                    subject=right_cand,
+                    base_crop_w=base_crop_w,
+                    base_crop_h=base_crop_h,
+                    frame_w=frame_w,
+                    frame_h=frame_h,
+                    min_zoom=args.min_zoom,
+                    max_zoom=args.max_zoom,
+                )
+                apply_camera_motion(
+                    right_state,
+                    right_obs,
+                    args,
+                    base_crop_w,
+                    base_crop_h,
+                    frame_w,
+                    frame_h,
+                    x_min=frame_w / 2,
+                    x_max=float(frame_w),
+                )
+                crop_w, crop_h = current_crop_size(
+                    base_crop_w, base_crop_h, right_state.zoom, frame_w, frame_h
+                )
+                right_crop, _ = crop_frame(
+                    frame,
+                    right_state.crop_center_x,
+                    right_state.crop_center_y,
+                    crop_w,
+                    crop_h,
+                )
+                right_pane = resize_cover(right_crop, pane_w, args.output_height)
+
+                if divider_w > 0:
+                    divider = np.zeros(
+                        (args.output_height, divider_w, 3), dtype=np.uint8
+                    )
+                    clean_out = np.hstack([left_pane, divider, right_pane])
+                else:
+                    clean_out = np.hstack([left_pane, right_pane])
+
+                if clean_out.shape[1] != args.output_width:
+                    clean_out = cv2.resize(
+                        clean_out,
+                        (args.output_width, args.output_height),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+
+                rendered_split = True
                 state.missed_frames = 0
                 state.tracked_id = None
                 state.tracked_cls_id = None
@@ -1992,6 +2235,8 @@ def process_video(args: argparse.Namespace) -> None:
                 state.framing_vy = 0.0
 
             elif subject is not None:
+                stats["frames_with_subject"] += 1
+                stats["frames_single"] += 1
                 previous_subject_key = (state.tracked_id, state.tracked_cls_id)
                 current_subject_key = (subject.track_id, subject.cls_id)
                 if (
@@ -2001,7 +2246,6 @@ def process_video(args: argparse.Namespace) -> None:
                     stats["subject_switches"] += 1
                 last_subject_key = current_subject_key
 
-                stats["frames_with_subject"] += 1
                 if subject.face_box is not None:
                     stats["frames_with_face"] += 1
 
@@ -2072,6 +2316,7 @@ def process_video(args: argparse.Namespace) -> None:
                 else:
                     state.frames_since_subject_switch = 0
             else:
+                stats["frames_single"] += 1
                 state.missed_frames += 1
                 state.framing_vx *= 0.5
                 state.framing_vy *= 0.5
@@ -2131,46 +2376,52 @@ def process_video(args: argparse.Namespace) -> None:
                     frame_h - crop_h / 2,
                 )
 
-            crop_w, crop_h = current_crop_size(
-                base_crop_w, base_crop_h, state.zoom, frame_w, frame_h
-            )
-            cropped, crop_rect = crop_frame(
-                frame, state.crop_center_x, state.crop_center_y, crop_w, crop_h
-            )
-            clean_out = cv2.resize(
-                cropped,
-                (args.output_width, args.output_height),
-                interpolation=cv2.INTER_LINEAR,
-            )
-            writer.write(clean_out)
-
-            if debug_writer is not None:
-                dbg = draw_debug(
-                    frame,
-                    crop_rect,
-                    candidates,
-                    subject,
-                    pair,
-                    state,
-                    frame_idx,
-                    total_frames,
+            if rendered_split:
+                writer.write(clean_out)
+                if debug_writer is not None:
+                    debug_writer.write(clean_out)
+            else:
+                crop_w, crop_h = current_crop_size(
+                    base_crop_w, base_crop_h, state.zoom, frame_w, frame_h
                 )
-                dbg_out = cv2.resize(
-                    dbg,
+                cropped, crop_rect = crop_frame(
+                    frame, state.crop_center_x, state.crop_center_y, crop_w, crop_h
+                )
+                clean_out = cv2.resize(
+                    cropped,
                     (args.output_width, args.output_height),
                     interpolation=cv2.INTER_LINEAR,
                 )
-                debug_writer.write(dbg_out)
+                writer.write(clean_out)
+
+                if debug_writer is not None:
+                    dbg = draw_debug(
+                        frame,
+                        crop_rect,
+                        candidates,
+                        subject,
+                        pair if not use_split else None,
+                        state,
+                        frame_idx,
+                        total_frames,
+                    )
+                    dbg_out = cv2.resize(
+                        dbg,
+                        (args.output_width, args.output_height),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                    debug_writer.write(dbg_out)
 
             stats["frames_processed"] += 1
 
             if frame_idx % 50 == 0:
                 saliency_telemetry = saliency_helper.get_telemetry()
                 logging.info(
-                    "Processed %s/%s | scene=%s | zoom=%.2f | tracked=%s | saliency=%s/%s",
+                    "Processed %s/%s | scene=%s | layout=%s | zoom=%.2f | tracked=%s | saliency=%s/%s",
                     frame_idx,
                     total_frames if total_frames > 0 else "?",
                     state.current_scene_index,
+                    "split" if rendered_split else "single",
                     state.zoom,
                     state.tracked_id,
                     saliency_telemetry.get("active_backend"),
@@ -2216,6 +2467,9 @@ def process_video(args: argparse.Namespace) -> None:
             "frames_with_subject": stats["frames_with_subject"],
             "frames_with_face": stats["frames_with_face"],
             "frames_with_two_person": stats["frames_with_two_person"],
+            "frames_split": stats["frames_split"],
+            "frames_single": stats["frames_single"],
+            "layout": args.layout,
             "subject_switches": stats["subject_switches"],
             "output_width": args.output_width,
             "output_height": args.output_height,
