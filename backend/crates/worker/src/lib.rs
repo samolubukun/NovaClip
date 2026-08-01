@@ -117,6 +117,9 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
         auto_vertical_reframe: task.auto_vertical_reframe,
         reframe_preset: task.reframe_preset.clone(),
         reframe_frame_skip: task.reframe_frame_skip.max(1) as u32,
+        reframe_layout: task.reframe_layout.clone(),
+        speaker_active_switch: task.speaker_active_switch,
+        split_divider: task.split_divider,
         originality_boost: task.originality_boost.clone(),
         translate_language: task.translate_language.clone(),
         giphy_api_key: std::env::var("GIPHY_API_KEY").ok().filter(|s| !s.is_empty())
@@ -176,12 +179,14 @@ async fn process_standard_task(
         caption::{burn_captions, get_caption_style, get_clip_words},
         clip::{build_crop_filter, extract_clip},
         crop::output_dimensions,
-        reframe::apply_vertical_reframe,
+        reframe::{apply_vertical_reframe, ReframeOptions},
         originality::apply_originality_boost,
         translate::translate_words,
         dedup::{dedup_segments, timestamp_to_seconds},
         download::{download_youtube, extract_audio, get_video_duration, resolve_upload_path},
-        transcribe::{build_transcript_for_prompt, transcribe_with_deepgram},
+        transcribe::{
+            build_transcript_for_prompt, speaker_segments_for_window, transcribe_with_deepgram,
+        },
     };
 
     let task_id = cfg.task_id;
@@ -268,6 +273,9 @@ async fn process_standard_task(
         let msg = format!("Rendering clip {} of {}...", i + 1, total_clips);
         emit_progress(db, task_id_str, pct, &msg, "processing").await;
 
+        let start_secs = timestamp_to_seconds(&seg.start_time);
+        let end_secs = timestamp_to_seconds(&seg.end_time);
+
         let raw_clip_path = extract_clip(
             &video_path,
             output_dir,
@@ -282,7 +290,36 @@ async fn process_standard_task(
 
         let reframed_path = if use_reframe {
             let reframe_output = output_dir.join(format!("reframe_{}_{}.mp4", i + 1, &task_id_str[..8]));
-            match apply_vertical_reframe(&raw_clip_path, &reframe_output, &cfg.reframe_preset, cfg.reframe_frame_skip).await {
+            let speaker_json_path = if cfg.reframe_layout != "single" && cfg.speaker_active_switch {
+                let segments = speaker_segments_for_window(&transcript.words, start_secs, end_secs);
+                if segments.is_empty() {
+                    None
+                } else {
+                    let p = output_dir.join(format!("speaker_{}_{}.json", i + 1, &task_id_str[..8]));
+                    tokio::fs::write(&p, serde_json::to_vec(&segments).unwrap_or_default()).await.ok();
+                    Some(p)
+                }
+            } else {
+                None
+            };
+            let reframe_opts = ReframeOptions {
+                layout: &cfg.reframe_layout,
+                speaker_aware: cfg.speaker_active_switch,
+                split_divider: cfg.split_divider,
+                speaker_json: speaker_json_path.as_deref(),
+            };
+            let reframe_result = apply_vertical_reframe(
+                &raw_clip_path,
+                &reframe_output,
+                &cfg.reframe_preset,
+                cfg.reframe_frame_skip,
+                &reframe_opts,
+            )
+            .await;
+            if let Some(p) = &speaker_json_path {
+                tokio::fs::remove_file(p).await.ok();
+            }
+            match reframe_result {
                 Ok(()) => {
                     tokio::fs::remove_file(&raw_clip_path).await.ok();
                     reframe_output
@@ -323,8 +360,6 @@ async fn process_standard_task(
         };
 
         let clip_for_captions = reframed_path;
-        let start_secs = timestamp_to_seconds(&seg.start_time);
-        let end_secs = timestamp_to_seconds(&seg.end_time);
         let clip_word_refs = get_clip_words(&transcript.words, start_secs, end_secs);
         let mut caption_owned: Vec<crate::pipeline::transcribe::DeepgramWord> = clip_word_refs.iter().map(|w| (*w).clone()).collect();
 
@@ -1302,6 +1337,7 @@ fn build_simple_words(sentence: &str, total_duration: f64) -> Vec<crate::pipelin
             end: start + word_dur,
             confidence: 0.99,
             punctuated_word: Some(w.to_string()),
+            speaker: None,
         }
     }).collect()
 }
