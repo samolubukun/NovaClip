@@ -79,6 +79,7 @@ pub async fn translate_words(
                 end: v["end"].as_f64().unwrap_or(0.0),
                 confidence: 1.0,
                 punctuated_word: Some(v["word"].as_str()?.to_string()),
+                speaker: None,
             })
         })
         .collect();
