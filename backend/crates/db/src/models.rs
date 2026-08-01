@@ -31,6 +31,7 @@ pub struct Task {
     pub error_message: Option<String>,
     pub gemini_api_key: Option<String>,
     pub deepgram_api_key: Option<String>,
+    pub stt_provider: String,
     pub cancel_requested: bool,
     pub auto_vertical_reframe: bool,
     pub reframe_preset: String,
