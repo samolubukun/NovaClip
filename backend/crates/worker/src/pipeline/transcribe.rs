@@ -10,6 +10,14 @@ pub struct DeepgramWord {
     pub end: f64,
     pub confidence: f64,
     pub punctuated_word: Option<String>,
+    pub speaker: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeakerSegment {
+    pub start: f64,
+    pub end: f64,
+    pub speaker: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +75,7 @@ pub async fn transcribe_with_deepgram(
 
     let client = reqwest::Client::new();
     let response = client
-        .post("https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&punctuate=true&utterances=false&words=true&language=en")
+        .post("https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&punctuate=true&utterances=false&words=true&diarize_model=latest&language=en")
         .header("Authorization", format!("Token {}", api_key))
         .header("Content-Type", "audio/mpeg")
         .body(audio_bytes)
@@ -103,12 +111,14 @@ pub async fn transcribe_with_deepgram(
                 end: w["end"].as_f64()?,
                 confidence: w["confidence"].as_f64().unwrap_or(1.0),
                 punctuated_word: w["punctuated_word"].as_str().map(|s| s.to_string()),
+                speaker: w["speaker"].as_i64().map(|s| s as i32),
             })
         }).collect())
         .unwrap_or_default();
 
     let duration = words.last().map(|w| w.end).unwrap_or(0.0);
-    info!("Transcription complete: {} words, {:.1}s", words.len(), duration);
+    let speakers: Vec<i32> = words.iter().filter_map(|w| w.speaker).collect();
+    info!("Transcription complete: {} words, {:.1}s (diarized speakers: {:?})", words.len(), duration, speakers);
 
     Ok(TimestampedTranscript {
         full_text,
@@ -140,4 +150,37 @@ pub fn chunk_transcript(transcript: &TimestampedTranscript, chunk_mins: f64, ove
         start = (actual_end - overlap_secs).max(0.0);
     }
     chunks
+}
+
+/// Merge word-level diarization into `{start, end, speaker}` segments inside a
+/// clip window, with timestamps shifted so the window starts at t=0.
+pub fn speaker_segments_for_window(
+    words: &[DeepgramWord],
+    start: f64,
+    end: f64,
+) -> Vec<SpeakerSegment> {
+    let mut segments: Vec<SpeakerSegment> = Vec::new();
+    for w in words {
+        if w.end < start || w.start > end {
+            continue;
+        }
+        let speaker = match w.speaker {
+            Some(s) => s,
+            None => continue,
+        };
+        let s = (w.start - start).max(0.0);
+        let e = (w.end - start).max(0.0);
+        if let Some(last) = segments.last_mut() {
+            if last.speaker == speaker && s <= last.end + 0.3 {
+                last.end = e.max(last.end);
+                continue;
+            }
+        }
+        segments.push(SpeakerSegment {
+            start: s,
+            end: e,
+            speaker,
+        });
+    }
+    segments
 }
