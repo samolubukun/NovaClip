@@ -37,6 +37,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 - **Brand Watermark Overlay**: Upload transparent PNG/WEBP/JPEG logos with configurable positioning (Top Right, Top Left, Bottom Left, Bottom Right) and opacity slider. Looped across full video duration via ffmpeg `-loop 1` with per-frame alpha blending.
 - **Preset Caption Animations**: Choose between Bouncy Word-by-Word Pop, Typewriter Reveal, Smooth Fade-In, and Slide Up.
 - **NLP Emoji Auto-Insertion**: Automatically analyze transcript sentiment and append contextually relevant emojis to key caption words.
+- **Multi-Provider Speech-to-Text (STT)**: Choose between **Deepgram Nova-3** (cloud, fast word-level timestamps & multi-speaker diarization), **Vosk Local** (fast offline CPU speech recognition), or **Whisper Local** (`ggml-base.bin`, high-accuracy offline neural transcription).
 - **AI Vertical Reframe & Split-Screen**: YOLO + MediaPipe subject tracking with selectable camera modes (Single, Split Screen, Auto) and Deepgram v2 active-speaker diarization / hard cuts. Custom divider line and preset controls.
 - **Live Device Mockup Preview**: Dynamic aspect ratio live preview showing realistic frames for Vertical 9:16 (mobile notch frame), Square 1:1, Widescreen 16:9, and Original video.
 - **Originality Boost**: Apply brightness, contrast, and saturation adjustments to alter perceptual video hashes.
@@ -55,7 +56,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 | **Backend API** | Rust, Axum 0.8, Tokio Async Runtime, SQLx SQLite (WAL mode) |
 | **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC In-Process Async Queue, Playwright Chromium (Pinterest scraper) |
 | **Subject Tracking** | Python 3.11, Ultralytics YOLO11n-seg, MediaPipe Face/Pose, OpenCV, SceneDetect |
-| **Speech AI / TTS** | Deepgram Nova-3 STT, ElevenLabs with-timestamps API, Edge-TTS, Deepgram Aura TTS |
+| **Speech AI / STT / TTS** | Deepgram Nova-3 STT, Vosk Local STT, Whisper Local (ggml-base.bin), ElevenLabs with-timestamps API, Edge-TTS, Deepgram Aura TTS |
 | **Analysis & LLM AI** | Google Gemini AI Virality Analysis, Caption Translation, Edit Reasoning |
 | **Frontend UI** | React 19, TypeScript, Vite 6, Framer Motion, Lucide Icons |
 | **DevOps & Packaging** | Docker, Docker Compose, Nginx, Makefile |
