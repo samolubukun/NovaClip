@@ -156,6 +156,9 @@ struct CreateTaskRequest {
     auto_vertical_reframe: Option<bool>,
     reframe_preset: Option<String>,
     reframe_frame_skip: Option<i32>,
+    reframe_layout: Option<String>,
+    speaker_active_switch: Option<bool>,
+    split_divider: Option<bool>,
     originality_boost: Option<String>,
     translate_language: Option<String>,
     giphy_api_key: Option<String>,
@@ -221,6 +224,13 @@ async fn create_task(
     let auto_vertical_reframe = if req.auto_vertical_reframe.unwrap_or(false) { 1i32 } else { 0i32 };
     let reframe_preset = req.reframe_preset.clone().unwrap_or_else(|| "talking_head".into());
     let reframe_frame_skip = req.reframe_frame_skip.unwrap_or(1).clamp(1, 10);
+    let reframe_layout = req.reframe_layout.clone().unwrap_or_else(|| "single".into());
+    let reframe_layout = match reframe_layout.as_str() {
+        "split" | "auto" => reframe_layout,
+        _ => "single".to_string(),
+    };
+    let speaker_active_switch = if req.speaker_active_switch.unwrap_or(false) { 1i32 } else { 0i32 };
+    let split_divider = if req.split_divider.unwrap_or(false) { 1i32 } else { 0i32 };
     let originality_boost = req.originality_boost.clone().unwrap_or_else(|| "none".into());
     let translate_language = req.translate_language.clone().unwrap_or_default();
     let studio_payload_json = req.studio_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
@@ -242,10 +252,11 @@ async fn create_task(
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
             gemini_api_key, deepgram_api_key, auto_vertical_reframe, reframe_preset,
-            reframe_frame_skip, originality_boost, translate_language, giphy_api_key,
+            reframe_frame_skip, reframe_layout, speaker_active_switch, split_divider,
+            originality_boost, translate_language, giphy_api_key,
             studio_payload, highlight_color, caption_animation, auto_emojis,
             watermark_position, watermark_opacity)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
@@ -269,6 +280,9 @@ async fn create_task(
     .bind(auto_vertical_reframe)
     .bind(&reframe_preset)
     .bind(reframe_frame_skip)
+    .bind(&reframe_layout)
+    .bind(speaker_active_switch)
+    .bind(split_divider)
     .bind(&originality_boost)
     .bind(&translate_language)
     .bind(req.giphy_api_key)
@@ -335,6 +349,9 @@ async fn get_task(
         "processing_mode": task.processing_mode,
         "auto_vertical_reframe": task.auto_vertical_reframe,
         "reframe_preset": task.reframe_preset,
+        "reframe_layout": task.reframe_layout,
+        "speaker_active_switch": task.speaker_active_switch,
+        "split_divider": task.split_divider,
         "originality_boost": task.originality_boost,
 
         "translate_language": task.translate_language,
@@ -456,6 +473,12 @@ async fn ai_prompt_handler(
     let add_subtitles = if params["add_subtitles"].as_bool().unwrap_or(true) { 1i32 } else { 0i32 };
     let auto_vertical_reframe = if params["auto_vertical_reframe"].as_bool().unwrap_or(false) { 1i32 } else { 0i32 };
     let reframe_preset = params["reframe_preset"].as_str().unwrap_or("talking_head");
+    let reframe_layout = match params["reframe_layout"].as_str().unwrap_or("single") {
+        "split" | "auto" => "split",
+        _ => "single",
+    };
+    let speaker_active_switch = if params["speaker_active_switch"].as_bool().unwrap_or(false) { 1i32 } else { 0i32 };
+    let split_divider = if params["split_divider"].as_bool().unwrap_or(false) { 1i32 } else { 0i32 };
     let caption_template = params["caption_template"].as_str().unwrap_or("default");
     let originality_boost = params["originality_boost"].as_str().unwrap_or("none");
     let translate_language = params["translate_language"].as_str().unwrap_or("");
@@ -466,8 +489,9 @@ async fn ai_prompt_handler(
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
             gemini_api_key, auto_vertical_reframe, reframe_preset, reframe_frame_skip,
+            reframe_layout, speaker_active_switch, split_divider,
             originality_boost, translate_language)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&req.url).bind(source_type).bind(aspect_ratio).bind(num_clips)
@@ -475,6 +499,7 @@ async fn ai_prompt_handler(
     .bind(add_subtitles).bind(0).bind("fast").bind(0).bind(900).bind(0).bind("[]")
     .bind(&gemini_key)
     .bind(auto_vertical_reframe).bind(reframe_preset).bind(1)
+    .bind(reframe_layout).bind(speaker_active_switch).bind(split_divider)
     .bind(originality_boost).bind(translate_language)
     .execute(&state.db).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
@@ -706,6 +731,9 @@ struct ApplySettingsRequest {
     filtered_words: Option<Vec<String>>,
     auto_vertical_reframe: Option<bool>,
     reframe_preset: Option<String>,
+    reframe_layout: Option<String>,
+    speaker_active_switch: Option<bool>,
+    split_divider: Option<bool>,
     originality_boost: Option<String>,
     translate_language: Option<String>,
 }
@@ -716,6 +744,9 @@ async fn apply_settings(
     Json(req): Json<ApplySettingsRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let font_color = normalize_color(req.font_color.as_deref().unwrap_or("#FFFFFF"));
+    let reframe_layout = req.reframe_layout.clone().filter(|v| v == "split" || v == "auto");
+    let speaker_active_switch = req.speaker_active_switch.map(|v| if v { 1 } else { 0 });
+    let split_divider = req.split_divider.map(|v| if v { 1 } else { 0 });
     sqlx::query(
         r#"UPDATE tasks SET
             font_family = COALESCE(?, font_family),
@@ -729,6 +760,9 @@ async fn apply_settings(
             remove_filler_words = COALESCE(?, remove_filler_words),
             auto_vertical_reframe = COALESCE(?, auto_vertical_reframe),
             reframe_preset = COALESCE(?, reframe_preset),
+            reframe_layout = COALESCE(?, reframe_layout),
+            speaker_active_switch = COALESCE(?, speaker_active_switch),
+            split_divider = COALESCE(?, split_divider),
             originality_boost = COALESCE(?, originality_boost),
             translate_language = COALESCE(?, translate_language),
             updated_at = datetime('now')
@@ -745,6 +779,9 @@ async fn apply_settings(
     .bind(req.remove_filler_words)
     .bind(req.auto_vertical_reframe)
     .bind(req.reframe_preset)
+    .bind(reframe_layout)
+    .bind(speaker_active_switch)
+    .bind(split_divider)
     .bind(req.originality_boost)
     .bind(req.translate_language)
     .bind(id.to_string())
