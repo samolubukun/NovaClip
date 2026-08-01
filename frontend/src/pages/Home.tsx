@@ -65,6 +65,9 @@ export default function Home() {
   const [mode, setMode] = useState<"fast" | "quality">("fast");
   const [autoVerticalReframe, setAutoVerticalReframe] = useState(false);
   const [reframePreset, setReframePreset] = useState("talking_head");
+  const [reframeLayout, setReframeLayout] = useState<"single" | "split" | "auto">("single");
+  const [speakerActiveSwitch, setSpeakerActiveSwitch] = useState(false);
+  const [splitDivider, setSplitDivider] = useState(false);
   const [originalityBoost, setOriginalityBoost] = useState("none");
   const [customBrightness, setCustomBrightness] = useState(0.05);
   const [customContrast, setCustomContrast] = useState(1.08);
@@ -140,6 +143,9 @@ export default function Home() {
         processing_mode: mode,
         auto_vertical_reframe: autoVerticalReframe,
         reframe_preset: reframePreset,
+        reframe_layout: reframeLayout,
+        speaker_active_switch: speakerActiveSwitch,
+        split_divider: splitDivider,
         originality_boost: originalityBoost === "custom"
           ? `custom:${customBrightness}:${customContrast}:${customSaturation}`
           : originalityBoost,
@@ -601,6 +607,71 @@ export default function Home() {
                         <span style={{ display: "block", fontSize: "0.7rem", color: "#888", marginTop: "0.35rem", textAlign: "center", lineHeight: 1.3 }}>
                           Auto-detects speaker faces & tracks active subject into 9:16 frame.
                         </span>
+
+                        {/* Camera Mode & Active Speaker Controls */}
+                        {autoVerticalReframe && aspectRatio === "9:16" && (
+                          <div style={{ marginTop: "0.85rem", padding: "0.75rem", borderRadius: "10px", background: "#0d0d11", border: "1px solid rgba(255,255,255,0.08)" }}>
+                            <span style={{ display: "block", fontSize: "0.72rem", color: "#aaa", marginBottom: "0.45rem", fontWeight: 700, textAlign: "center" }}>Camera Mode</span>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.35rem" }}>
+                              {([
+                                { id: "single", label: "Single" },
+                                { id: "split", label: "Split Screen" },
+                                { id: "auto", label: "Auto" },
+                              ] as const).map(m => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => setReframeLayout(m.id)}
+                                  style={{
+                                    padding: "0.45rem 0.3rem",
+                                    borderRadius: "8px",
+                                    border: `1px solid ${reframeLayout === m.id ? "var(--accent)" : "rgba(255,255,255,0.1)"}`,
+                                    background: reframeLayout === m.id ? "rgba(255, 224, 0, 0.12)" : "#131318",
+                                    color: reframeLayout === m.id ? "var(--accent)" : "#aaa",
+                                    cursor: "pointer",
+                                    fontSize: "0.7rem",
+                                    fontWeight: 700,
+                                    transition: "all 0.15s",
+                                  }}
+                                >{m.label}</button>
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", gap: "1rem", marginTop: "0.6rem", alignItems: "center" }}>
+                              {reframeLayout !== "split" && (
+                                <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontSize: "0.72rem", color: "#aaa", fontWeight: 600 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={speakerActiveSwitch}
+                                    onChange={e => setSpeakerActiveSwitch(e.target.checked)}
+                                    style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                                  />
+                                  Cut to active speaker
+                                </label>
+                              )}
+                              {reframeLayout !== "single" && (
+                                <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontSize: "0.72rem", color: "#aaa", fontWeight: 600 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={splitDivider}
+                                    onChange={e => setSplitDivider(e.target.checked)}
+                                    style={{ accentColor: "var(--accent)", cursor: "pointer" }}
+                                  />
+                                  Divider
+                                </label>
+                              )}
+                            </div>
+                            {reframeLayout !== "split" && (
+                              <span style={{ display: "block", fontSize: "0.65rem", color: "#666", marginTop: "0.4rem", textAlign: "center", lineHeight: 1.3 }}>
+                                Camera hard-cuts to whoever's talking (Single/Auto).
+                              </span>
+                            )}
+                            {reframeLayout !== "single" && (
+                              <span style={{ display: "block", fontSize: "0.65rem", color: "#666", marginTop: "0.4rem", textAlign: "center", lineHeight: 1.3 }}>
+                                Split renders both speakers side-by-side; Auto switches per scene. Great for podcasts.
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
