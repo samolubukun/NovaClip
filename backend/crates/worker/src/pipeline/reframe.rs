@@ -37,6 +37,25 @@ async fn probe_fps(input: &Path) -> Result<f64> {
     }
 }
 
+/// Options for the reframe engine. `layout` is one of single/split/auto.
+pub struct ReframeOptions<'a> {
+    pub layout: &'a str,
+    pub speaker_aware: bool,
+    pub split_divider: bool,
+    pub speaker_json: Option<&'a Path>,
+}
+
+impl Default for ReframeOptions<'_> {
+    fn default() -> Self {
+        Self {
+            layout: "single",
+            speaker_aware: false,
+            split_divider: false,
+            speaker_json: None,
+        }
+    }
+}
+
 /// Run vertical reframe (AI subject tracking) on a clip via Python subprocess.
 /// `frame_skip` > 1 decimates frames before reframe for speed (e.g. 3 = process every 3rd frame).
 pub async fn apply_vertical_reframe(
@@ -44,13 +63,16 @@ pub async fn apply_vertical_reframe(
     output: &Path,
     preset: &str,
     frame_skip: u32,
+    opts: &ReframeOptions<'_>,
 ) -> Result<()> {
     info!(
-        "Running vertical reframe on {} -> {} (preset: {}, skip={})",
+        "Running vertical reframe on {} -> {} (preset: {}, skip={}, layout={}, speaker_aware={})",
         input.display(),
         output.display(),
         preset,
-        frame_skip
+        frame_skip,
+        opts.layout,
+        opts.speaker_aware
     );
 
     let reframe_dir = std::env::current_dir()
@@ -84,17 +106,15 @@ pub async fn apply_vertical_reframe(
         }
 
         // Step 2: run reframe on decimated video
-        let reframe_cmd = tokio::process::Command::new(&python_path)
-            .args([
-                "-m", "novaclip_reframe",
-                decimated.to_str().unwrap(),
-                reframe_part.to_str().unwrap(),
-                "--preset", preset,
-            ])
-            .env("PYTHONPATH", reframe_dir.to_str().unwrap())
-            .stderr(Stdio::piped())
-            .output()
-            .await?;
+        let reframe_cmd = run_reframe(
+            &python_path,
+            &reframe_dir,
+            &decimated,
+            &reframe_part,
+            preset,
+            opts,
+        )
+        .await?;
         if !reframe_cmd.status.success() {
             let stderr = String::from_utf8_lossy(&reframe_cmd.stderr);
             tokio::fs::remove_file(&decimated).await.ok();
@@ -133,19 +153,15 @@ pub async fn apply_vertical_reframe(
     }
 
     // No skipping — run directly
-    let output_cmd = tokio::process::Command::new(&python_path)
-        .args([
-            "-m",
-            "novaclip_reframe",
-            input.to_str().unwrap(),
-            output.to_str().unwrap(),
-            "--preset",
-            preset,
-        ])
-        .env("PYTHONPATH", reframe_dir.to_str().unwrap())
-        .stderr(Stdio::piped())
-        .output()
-        .await?;
+    let output_cmd = run_reframe(
+        &python_path,
+        &reframe_dir,
+        input,
+        output,
+        preset,
+        opts,
+    )
+    .await?;
 
     if !output_cmd.status.success() {
         let stderr = String::from_utf8_lossy(&output_cmd.stderr);
@@ -154,4 +170,49 @@ pub async fn apply_vertical_reframe(
 
     info!("Vertical reframe complete: {}", output.display());
     Ok(())
+}
+
+/// Invoke the reframe engine Python module.
+async fn run_reframe(
+    python_path: &Path,
+    reframe_dir: &Path,
+    input: &Path,
+    output: &Path,
+    preset: &str,
+    opts: &ReframeOptions<'_>,
+) -> Result<std::process::Output> {
+    let mut args: Vec<String> = vec![
+        "-m".to_string(),
+        "novaclip_reframe".to_string(),
+        input.to_str().unwrap_or_default().to_string(),
+        output.to_str().unwrap_or_default().to_string(),
+        "--preset".to_string(),
+        preset.to_string(),
+    ];
+    args.extend(reframe_arg_tail(opts));
+    Ok(tokio::process::Command::new(python_path)
+        .args(&args)
+        .env("PYTHONPATH", reframe_dir.to_str().unwrap_or_default())
+        .stderr(Stdio::piped())
+        .output()
+        .await?)
+}
+
+/// Extra CLI args for the reframe engine derived from options.
+fn reframe_arg_tail(opts: &ReframeOptions<'_>) -> Vec<String> {
+    let mut args = vec![
+        "--layout".to_string(),
+        opts.layout.to_string(),
+    ];
+    if opts.split_divider {
+        args.push("--split-divider".to_string());
+    }
+    if opts.speaker_aware {
+        args.push("--speaker-aware-mode".to_string());
+        if let Some(path) = opts.speaker_json {
+            args.push("--speaker-json".to_string());
+            args.push(path.to_str().unwrap_or_default().to_string());
+        }
+    }
+    args
 }
