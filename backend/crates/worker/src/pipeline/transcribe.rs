@@ -348,8 +348,156 @@ pub async fn transcribe_audio(
     }
 }
 
-/// Run local Python MFCC + Cosine Agglomerative Clustering speaker diarizer
+/// Run Polyvoice neural speaker diarization (Silero VAD + WeSpeaker + Pyannote segmentation)
+pub fn diarize_words_polyvoice(
+    audio_path: &Path,
+    words: &mut Vec<DeepgramWord>,
+) -> Result<()> {
+    if words.is_empty() {
+        return Ok(());
+    }
+
+    let temp_wav = audio_path.with_extension("polyvoice_tmp.wav");
+    let status = std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            audio_path.to_str().unwrap_or_default(),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-f",
+            "wav",
+            temp_wav.to_str().unwrap_or_default(),
+        ])
+        .status()?;
+
+    if !status.success() {
+        return Ok(());
+    }
+
+    let pipeline_res = polyvoice::Pipeline::builder()
+        .config(polyvoice::PipelineConfig {
+            profile: polyvoice::types::Profile::Balanced,
+            ..Default::default()
+        })
+        .with_models_from(polyvoice::models::ModelRegistry::default()?)
+        .build();
+
+    let pipeline = match pipeline_res {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Polyvoice pipeline init error: {}", e);
+            let _ = std::fs::remove_file(&temp_wav);
+            return Ok(());
+        }
+    };
+
+    let (samples, sr) = match polyvoice::wav::load_audio(&temp_wav) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("Polyvoice load audio error: {}", e);
+            let _ = std::fs::remove_file(&temp_wav);
+            return Ok(());
+        }
+    };
+
+    let sample_rate = match polyvoice::types::SampleRate::new(sr) {
+        Some(sr) => sr,
+        None => {
+            let _ = std::fs::remove_file(&temp_wav);
+            return Ok(());
+        }
+    };
+
+    let result = match pipeline.run(&samples, sample_rate) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Polyvoice diarization run error: {}", e);
+            let _ = std::fs::remove_file(&temp_wav);
+            return Ok(());
+        }
+    };
+
+    let _ = std::fs::remove_file(&temp_wav);
+
+    if result.turns.is_empty() {
+        return Ok(());
+    }
+
+    let mut speaker_map: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut next_id = 0;
+
+    for word in words.iter_mut() {
+        let w_center = (word.start + word.end) / 2.0;
+        let matched_turn = result.turns.iter().find(|t| {
+            let s = t.time.start as f64;
+            let e = t.time.end as f64;
+            w_center >= s && w_center <= e
+        }).or_else(|| {
+            result.turns.iter().find(|t| {
+                let s = t.time.start as f64;
+                let e = t.time.end as f64;
+                word.start >= s - 0.2 && word.start <= e + 0.2
+            })
+        });
+
+        if let Some(turn) = matched_turn {
+            let spk_str = turn.speaker.to_string();
+            let spk_id = *speaker_map.entry(spk_str).or_insert_with(|| {
+                let id = next_id;
+                next_id += 1;
+                id
+            });
+            word.speaker = Some(spk_id);
+        } else {
+            word.speaker = Some(0);
+        }
+    }
+
+    info!(
+        "Polyvoice neural speaker diarization assigned {} turns across {} words",
+        result.turns.len(),
+        words.len()
+    );
+    Ok(())
+}
+
+/// Run local speaker diarizer using Polyvoice with fallback to Python MFCC clustering
 pub async fn diarize_words_local(
+    audio_path: &Path,
+    words: &mut Vec<DeepgramWord>,
+) -> Result<()> {
+    if words.is_empty() {
+        return Ok(());
+    }
+
+    let audio_path_buf = audio_path.to_path_buf();
+    let mut words_clone = words.clone();
+
+    // Try Rust Polyvoice neural diarization first
+    let polyvoice_res = tokio::task::spawn_blocking(move || {
+        diarize_words_polyvoice(&audio_path_buf, &mut words_clone)?;
+        Ok::<_, anyhow::Error>(words_clone)
+    })
+    .await;
+
+    if let Ok(Ok(updated_words)) = polyvoice_res {
+        let has_speakers = updated_words.iter().any(|w| w.speaker.is_some());
+        if has_speakers {
+            *words = updated_words;
+            return Ok(());
+        }
+    }
+
+    // Fallback to Python MFCC Cosine clustering
+    diarize_words_python(audio_path, words).await
+}
+
+/// Fallback Python MFCC Cosine clustering
+pub async fn diarize_words_python(
     audio_path: &Path,
     words: &mut Vec<DeepgramWord>,
 ) -> Result<()> {
