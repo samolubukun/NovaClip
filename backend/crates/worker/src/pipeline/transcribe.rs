@@ -142,7 +142,7 @@ pub async fn transcribe_with_vosk(
     let pcm = decode_pcm_s16le(audio_path).await?;
     let model_path_buf = model_path.to_path_buf();
 
-    tokio::task::spawn_blocking(move || {
+    let transcript_res = tokio::task::spawn_blocking::<_, anyhow::Result<TimestampedTranscript>>(move || {
         let model_str = model_path_buf
             .to_str()
             .context("Invalid Vosk model path string")?;
@@ -207,7 +207,13 @@ pub async fn transcribe_with_vosk(
         })
     })
     .await
-    .context("Vosk blocking task panicked")?
+    .context("Vosk blocking task panicked")?;
+
+    let mut transcript = transcript_res?;
+    if !transcript.words.is_empty() {
+        diarize_words_local(audio_path, &mut transcript.words).await.ok();
+    }
+    Ok(transcript)
 }
 
 /// Transcribe audio locally using Whisper batch recognition
@@ -224,7 +230,7 @@ pub async fn transcribe_with_whisper(
     let pcm_f32 = decode_pcm_f32le(audio_path).await?;
     let model_path_buf = model_path.to_path_buf();
 
-    tokio::task::spawn_blocking(move || {
+    let transcript_res = tokio::task::spawn_blocking::<_, anyhow::Result<TimestampedTranscript>>(move || {
         let model_str = model_path_buf
             .to_str()
             .context("Invalid Whisper model path string")?;
@@ -318,7 +324,13 @@ pub async fn transcribe_with_whisper(
         })
     })
     .await
-    .context("Whisper blocking task panicked")?
+    .context("Whisper blocking task panicked")?;
+
+    let mut transcript = transcript_res?;
+    if !transcript.words.is_empty() {
+        diarize_words_local(audio_path, &mut transcript.words).await.ok();
+    }
+    Ok(transcript)
 }
 
 /// Unified transcription entry point supporting Deepgram, Vosk, and Whisper
@@ -334,6 +346,74 @@ pub async fn transcribe_audio(
         "whisper" => transcribe_with_whisper(audio_path, whisper_model_path).await,
         _ => transcribe_with_deepgram(audio_path, deepgram_api_key).await,
     }
+}
+
+/// Run local Python MFCC + Cosine Agglomerative Clustering speaker diarizer
+pub async fn diarize_words_local(
+    audio_path: &Path,
+    words: &mut Vec<DeepgramWord>,
+) -> Result<()> {
+    if words.is_empty() {
+        return Ok(());
+    }
+
+    let worker_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let root_dir = if worker_dir.ends_with("worker") {
+        worker_dir.parent().and_then(|p| p.parent()).unwrap_or(&worker_dir)
+    } else if worker_dir.ends_with("backend") {
+        &worker_dir
+    } else {
+        &worker_dir
+    };
+
+    let python_bin = if cfg!(target_os = "windows") {
+        root_dir.join("novaclip_reframe/venv/Scripts/python.exe")
+    } else {
+        root_dir.join("novaclip_reframe/venv/bin/python")
+    };
+
+    let script_path = root_dir.join("novaclip_reframe/novaclip_reframe/diarize.py");
+
+    if !python_bin.exists() || !script_path.exists() {
+        tracing::warn!("Python venv or diarize.py not found at {:?}, skipping local diarization", script_path);
+        return Ok(());
+    }
+
+    let json_input = serde_json::to_string(words)?;
+
+    let mut child = tokio::process::Command::new(python_bin)
+        .arg(&script_path)
+        .arg("--audio")
+        .arg(audio_path)
+        .arg("--num-speakers")
+        .arg("2")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(json_input.as_bytes()).await?;
+        stdin.flush().await?;
+    }
+
+    let output = child.wait_with_output().await?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        tracing::warn!("Local diarization script warning/error: {}", err);
+        return Ok(());
+    }
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    if let Ok(updated_words) = serde_json::from_str::<Vec<DeepgramWord>>(&stdout_str) {
+        if updated_words.len() == words.len() {
+            *words = updated_words;
+            info!("Local speaker diarization applied to {} words", words.len());
+        }
+    }
+
+    Ok(())
 }
 
 /// Transcribe audio with Deepgram Nova-3
