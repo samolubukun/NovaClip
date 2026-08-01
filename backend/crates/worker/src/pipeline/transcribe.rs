@@ -61,6 +61,281 @@ pub fn build_transcript_for_prompt(transcript: &TimestampedTranscript) -> String
     lines.join("\n")
 }
 
+/// Helper to decode audio to 16kHz mono s16le PCM via ffmpeg
+async fn decode_pcm_s16le(audio_path: &Path) -> Result<Vec<i16>> {
+    let output = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            audio_path.to_str().unwrap_or_default(),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-f",
+            "s16le",
+            "-",
+        ])
+        .output()
+        .await
+        .context("Failed to execute ffmpeg for s16le PCM extraction")?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg s16le decode failed: {}", err);
+    }
+
+    let bytes = output.stdout;
+    let mut pcm = Vec::with_capacity(bytes.len() / 2);
+    for chunk in bytes.chunks_exact(2) {
+        pcm.push(i16::from_le_bytes([chunk[0], chunk[1]]));
+    }
+    Ok(pcm)
+}
+
+/// Helper to decode audio to 16kHz mono f32le PCM via ffmpeg
+async fn decode_pcm_f32le(audio_path: &Path) -> Result<Vec<f32>> {
+    let output = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            audio_path.to_str().unwrap_or_default(),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-f",
+            "f32le",
+            "-",
+        ])
+        .output()
+        .await
+        .context("Failed to execute ffmpeg for f32le PCM extraction")?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("ffmpeg f32le decode failed: {}", err);
+    }
+
+    let bytes = output.stdout;
+    let mut pcm = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        let sample_bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
+        pcm.push(f32::from_le_bytes(sample_bytes));
+    }
+    Ok(pcm)
+}
+
+/// Transcribe audio locally using Vosk batch recognition
+pub async fn transcribe_with_vosk(
+    audio_path: &Path,
+    model_path: &Path,
+) -> Result<TimestampedTranscript> {
+    info!(
+        "Transcribing locally with Vosk: {} (model: {})",
+        audio_path.display(),
+        model_path.display()
+    );
+
+    let pcm = decode_pcm_s16le(audio_path).await?;
+    let model_path_buf = model_path.to_path_buf();
+
+    tokio::task::spawn_blocking(move || {
+        let model_str = model_path_buf
+            .to_str()
+            .context("Invalid Vosk model path string")?;
+        let model = vosk::Model::new(model_str)
+            .ok_or_else(|| anyhow::anyhow!("Failed to load Vosk model from '{}'", model_str))?;
+
+        let mut recognizer = vosk::Recognizer::new(&model, 16000.0)
+            .ok_or_else(|| anyhow::anyhow!("Failed to create Vosk recognizer"))?;
+
+        recognizer.set_words(true);
+
+        let mut words = Vec::new();
+        let chunk_size = 8000; // 0.5s at 16kHz
+
+        for chunk in pcm.chunks(chunk_size) {
+            if let Ok(vosk::DecodingState::Finalized) = recognizer.accept_waveform(chunk) {
+                if let Some(single) = recognizer.result().single() {
+                    for w in single.result {
+                        words.push(DeepgramWord {
+                            word: w.word.to_string(),
+                            start: f64::from(w.start),
+                            end: f64::from(w.end),
+                            confidence: f64::from(w.conf),
+                            punctuated_word: Some(w.word.to_string()),
+                            speaker: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Some(single) = recognizer.final_result().single() {
+            for w in single.result {
+                words.push(DeepgramWord {
+                    word: w.word.to_string(),
+                    start: f64::from(w.start),
+                    end: f64::from(w.end),
+                    confidence: f64::from(w.conf),
+                    punctuated_word: Some(w.word.to_string()),
+                    speaker: None,
+                });
+            }
+        }
+
+        let full_text = words
+            .iter()
+            .map(|w| w.word.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let duration = words.last().map(|w| w.end).unwrap_or(0.0);
+
+        info!(
+            "Vosk transcription complete: {} words, {:.1}s",
+            words.len(),
+            duration
+        );
+
+        Ok(TimestampedTranscript {
+            full_text,
+            words,
+            duration,
+        })
+    })
+    .await
+    .context("Vosk blocking task panicked")?
+}
+
+/// Transcribe audio locally using Whisper batch recognition
+pub async fn transcribe_with_whisper(
+    audio_path: &Path,
+    model_path: &Path,
+) -> Result<TimestampedTranscript> {
+    info!(
+        "Transcribing locally with Whisper: {} (model: {})",
+        audio_path.display(),
+        model_path.display()
+    );
+
+    let pcm_f32 = decode_pcm_f32le(audio_path).await?;
+    let model_path_buf = model_path.to_path_buf();
+
+    tokio::task::spawn_blocking(move || {
+        let model_str = model_path_buf
+            .to_str()
+            .context("Invalid Whisper model path string")?;
+        let ctx_params = whisper_rs::WhisperContextParameters::default();
+        let context = whisper_rs::WhisperContext::new_with_params(model_str, ctx_params)
+            .map_err(|e| anyhow::anyhow!("Failed to load Whisper model from '{}': {}", model_str, e))?;
+
+        let mut params =
+            whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        params.set_n_threads(4);
+        params.set_language(Some("en"));
+        params.set_print_special(false);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+        params.set_token_timestamps(true);
+        params.set_split_on_word(true);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
+        params.set_temperature(0.0);
+
+        let mut state = context
+            .create_state()
+            .map_err(|e| anyhow::anyhow!("Failed to create Whisper state: {}", e))?;
+
+        state
+            .full(params, &pcm_f32)
+            .map_err(|e| anyhow::anyhow!("Whisper inference failed: {}", e))?;
+
+        let mut words = Vec::new();
+        let mut full_text_parts = Vec::new();
+
+        let segment_count = state
+            .full_n_segments()
+            .map_err(|e| anyhow::anyhow!("Whisper segment count error: {}", e))?;
+
+        for i in 0..segment_count {
+            let text = state
+                .full_get_segment_text(i)
+                .map_err(|e| anyhow::anyhow!("Whisper text error at segment {}: {}", i, e))?;
+            let start = state.full_get_segment_t0(i).unwrap_or(0) as f64 / 100.0;
+            let end = state.full_get_segment_t1(i).unwrap_or(0) as f64 / 100.0;
+
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                full_text_parts.push(trimmed.to_string());
+
+                let n_tokens = state.full_n_tokens(i).unwrap_or(0);
+                let mut segment_prob = 0.0f32;
+                let mut segment_token_count = 0;
+
+                for j in 0..n_tokens {
+                    if let Ok(token_data) = state.full_get_token_data(i, j) {
+                        if token_data.id < context.token_eot() {
+                            segment_prob += token_data.p;
+                            segment_token_count += 1;
+                        }
+                    }
+                }
+
+                let confidence = if segment_token_count > 0 {
+                    f64::from(segment_prob / segment_token_count as f32)
+                } else {
+                    1.0
+                };
+
+                words.push(DeepgramWord {
+                    word: trimmed.to_lowercase(),
+                    start,
+                    end,
+                    confidence,
+                    punctuated_word: Some(trimmed.to_string()),
+                    speaker: None,
+                });
+            }
+        }
+
+        let full_text = full_text_parts.join(" ");
+        let duration = words.last().map(|w| w.end).unwrap_or(0.0);
+
+        info!(
+            "Whisper transcription complete: {} words, {:.1}s",
+            words.len(),
+            duration
+        );
+
+        Ok(TimestampedTranscript {
+            full_text,
+            words,
+            duration,
+        })
+    })
+    .await
+    .context("Whisper blocking task panicked")?
+}
+
+/// Unified transcription entry point supporting Deepgram, Vosk, and Whisper
+pub async fn transcribe_audio(
+    audio_path: &Path,
+    provider: &str,
+    deepgram_api_key: &str,
+    vosk_model_path: &Path,
+    whisper_model_path: &Path,
+) -> Result<TimestampedTranscript> {
+    match provider.to_lowercase().as_str() {
+        "vosk" => transcribe_with_vosk(audio_path, vosk_model_path).await,
+        "whisper" => transcribe_with_whisper(audio_path, whisper_model_path).await,
+        _ => transcribe_with_deepgram(audio_path, deepgram_api_key).await,
+    }
+}
+
 /// Transcribe audio with Deepgram Nova-3
 pub async fn transcribe_with_deepgram(
     audio_path: &Path,
