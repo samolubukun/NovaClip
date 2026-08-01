@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, Minus, Check, Sliders, Cpu, Wand2, Languages, MessageSquareText, FormInput, Send } from "lucide-react";
+import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, Minus, Check, Sliders, Cpu, Wand2, Languages, MessageSquareText, FormInput, Send, Mic } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
@@ -73,6 +73,7 @@ export default function Home() {
   const [customContrast, setCustomContrast] = useState(1.08);
   const [customSaturation, setCustomSaturation] = useState(1.10);
   const [translateLanguage, setTranslateLanguage] = useState("");
+  const [sttProvider, setSttProvider] = useState("deepgram");
   const [loading, setLoading] = useState(false);
   const [inputMode, setInputMode] = useState<"form" | "ai">("form");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -150,6 +151,7 @@ export default function Home() {
           ? `custom:${customBrightness}:${customContrast}:${customSaturation}`
           : originalityBoost,
         translate_language: translateLanguage,
+        stt_provider: sttProvider,
       });
 
       if (watermarkFile) {
@@ -977,6 +979,24 @@ export default function Home() {
                       <option value="pl">Polish (Polski)</option>
                       <option value="uk">Ukrainian (Українська)</option>
                       <option value="sv">Swedish (Svenska)</option>
+                    </select>
+
+                    <div style={{ width: "1px", height: "20px", background: "rgba(255,255,255,0.1)" }} />
+
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", color: "#ddd", fontWeight: 600 }}>
+                      <Mic size={14} /> STT Model
+                    </label>
+                    <select
+                      value={sttProvider}
+                      onChange={e => setSttProvider(e.target.value)}
+                      style={{
+                        background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: "8px", padding: "0.3rem 0.5rem", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer",
+                      }}
+                    >
+                      <option value="deepgram">Deepgram Nova-3 (Cloud)</option>
+                      <option value="vosk">Vosk Local (Fast Offline)</option>
+                      <option value="whisper">Whisper Local (Base Offline)</option>
                     </select>
                   </div>
 
