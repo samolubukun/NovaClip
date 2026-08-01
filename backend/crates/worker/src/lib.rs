@@ -136,6 +136,15 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
         deepgram_api_key: task.deepgram_api_key
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| std::env::var("DEEPGRAM_API_KEY").unwrap_or_default()),
+        stt_provider: if task.stt_provider.trim().is_empty() {
+            std::env::var("STT_PROVIDER").unwrap_or_else(|_| "deepgram".into())
+        } else {
+            task.stt_provider.clone()
+        },
+        vosk_model_path: std::env::var("VOSK_MODEL_PATH")
+            .unwrap_or_else(|_| "models/vosk-model-small-en-us-0.15".into()),
+        whisper_model_path: std::env::var("WHISPER_MODEL_PATH")
+            .unwrap_or_else(|_| "models/ggml-base.bin".into()),
         pexels_api_key: std::env::var("PEXELS_API_KEY").ok().filter(|s| !s.is_empty()),
         pixabay_api_key: std::env::var("PIXABAY_API_KEY").ok().filter(|s| !s.is_empty()),
         studio_payload: task.studio_payload.as_ref().and_then(|s| serde_json::from_str(s).ok()),
@@ -185,7 +194,7 @@ async fn process_standard_task(
         dedup::{dedup_segments, timestamp_to_seconds},
         download::{download_youtube, extract_audio, get_video_duration, resolve_upload_path},
         transcribe::{
-            build_transcript_for_prompt, speaker_segments_for_window, transcribe_with_deepgram,
+            build_transcript_for_prompt, speaker_segments_for_window, transcribe_audio,
         },
     };
 
@@ -214,7 +223,13 @@ async fn process_standard_task(
     let audio_path = extract_audio(&video_path, &cfg.temp_dir).await?;
 
     emit_progress(db, task_id_str, 25, "Transcribing audio...", "processing").await;
-    let transcript = transcribe_with_deepgram(&audio_path, &cfg.deepgram_api_key).await?;
+    let transcript = transcribe_audio(
+        &audio_path,
+        &cfg.stt_provider,
+        &cfg.deepgram_api_key,
+        Path::new(&cfg.vosk_model_path),
+        Path::new(&cfg.whisper_model_path),
+    ).await?;
     let transcript_text = build_transcript_for_prompt(&transcript);
 
     sqlx::query(
