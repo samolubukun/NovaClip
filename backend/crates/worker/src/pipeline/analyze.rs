@@ -67,58 +67,101 @@ pub async fn analyze_transcript(
     model: &str,
     api_key: &str,
 ) -> Result<TranscriptAnalysis> {
-    let target_model = if model.is_empty() || model == "gemini-1.5-flash" || model == "gemini-2.5-flash-lite" {
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
+    let is_openrouter = model.contains('/') || model == "openrouter/free" || api_key.starts_with("sk-or-") || (!openrouter_key.is_empty() && api_key.is_empty());
+
+    let target_model = if is_openrouter {
+        if model.is_empty() { "openrouter/free" } else { model }
+    } else if model.is_empty() || model == "gemini-1.5-flash" || model == "gemini-2.5-flash-lite" {
         "gemini-3.1-flash-lite"
     } else {
         model
     };
-    info!("Analyzing transcript with Gemini {} for {} clips", target_model, num_clips);
 
     let user_prompt = format!(
         "Analyze this transcript and find the {} most viral clip candidates.\n\nTranscript:\n{}",
         num_clips, transcript_text
     );
 
-    let body = json!({
-        "systemInstruction": {
-            "parts": [{"text": VIRALITY_SYSTEM_PROMPT}]
-        },
-        "contents": [{
-            "role": "user",
-            "parts": [{"text": user_prompt}]
-        }],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 8192,
-            "responseMimeType": "application/json"
-        }
-    });
-
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        target_model, api_key
-    );
-
     let client = reqwest::Client::new();
-    let response = client
-        .post(&url)
-        .json(&body)
-        .timeout(std::time::Duration::from_secs(120))
-        .send()
-        .await
-        .context("Gemini request failed")?;
+    let content_text = if is_openrouter {
+        let key = if api_key.starts_with("sk-or-") { api_key } else { &openrouter_key };
+        info!("Analyzing transcript with OpenRouter {} for {} clips", target_model, num_clips);
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let text = response.text().await.unwrap_or_default();
-        anyhow::bail!("Gemini error {}: {}", status, text);
-    }
+        let body = json!({
+            "model": target_model,
+            "messages": [
+                {"role": "system", "content": VIRALITY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.3
+        });
 
-    let resp: Value = response.json().await.context("Failed to parse Gemini response")?;
-    let content_text = resp
-        .pointer("/candidates/0/content/parts/0/text")
-        .and_then(|v| v.as_str())
-        .context("No text in Gemini response")?;
+        let response = client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", key))
+            .header("HTTP-Referer", "https://novaclip.app")
+            .header("X-Title", "NovaClip")
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
+            .send()
+            .await
+            .context("OpenRouter request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            anyhow::bail!("OpenRouter error {}: {}", status, text);
+        }
+
+        let resp: Value = response.json().await.context("Failed to parse OpenRouter response")?;
+        resp.pointer("/choices/0/message/content")
+            .and_then(|v| v.as_str())
+            .context("No text in OpenRouter response")?
+            .to_string()
+    } else {
+        info!("Analyzing transcript with Gemini {} for {} clips", target_model, num_clips);
+
+        let body = json!({
+            "systemInstruction": {
+                "parts": [{"text": VIRALITY_SYSTEM_PROMPT}]
+            },
+            "contents": [{
+                "role": "user",
+                "parts": [{"text": user_prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 8192,
+                "responseMimeType": "application/json"
+            }
+        });
+
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            target_model, api_key
+        );
+
+        let response = client
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(120))
+            .send()
+            .await
+            .context("Gemini request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Gemini error {}: {}", status, text);
+        }
+
+        let resp: Value = response.json().await.context("Failed to parse Gemini response")?;
+        resp.pointer("/candidates/0/content/parts/0/text")
+            .and_then(|v| v.as_str())
+            .context("No text in Gemini response")?
+            .to_string()
+    };
 
     // Strip any markdown fences just in case
     let clean = content_text
@@ -129,7 +172,7 @@ pub async fn analyze_transcript(
         .trim();
 
     let analysis: Value = serde_json::from_str(clean)
-        .context("Failed to parse Gemini JSON output")?;
+        .context("Failed to parse LLM JSON output")?;
 
     let segments: Vec<TranscriptSegment> = analysis["most_relevant_segments"]
         .as_array()
