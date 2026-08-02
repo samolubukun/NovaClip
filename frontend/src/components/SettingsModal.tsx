@@ -10,7 +10,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [geminiKey, setGeminiKey] = useState("");
   const [deepgramKey, setDeepgramKey] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
-  const [openrouterModel, setOpenrouterModel] = useState("meta-llama/llama-3.3-70b-instruct:free");
+  const [openrouterModel, setOpenrouterModel] = useState("openrouter/free");
   const [elevenlabsKey, setElevenlabsKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
@@ -21,7 +21,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setGeminiKey(localStorage.getItem("novaclip_gemini_key") || "");
       setDeepgramKey(localStorage.getItem("novaclip_deepgram_key") || "");
       setOpenrouterKey(localStorage.getItem("novaclip_openrouter_key") || "");
-      setOpenrouterModel(localStorage.getItem("novaclip_openrouter_model") || "meta-llama/llama-3.3-70b-instruct:free");
+      setOpenrouterModel(localStorage.getItem("novaclip_openrouter_model") || "openrouter/free");
       setElevenlabsKey(localStorage.getItem("novaclip_elevenlabs_key") || "");
       setPexelsKey(localStorage.getItem("novaclip_pexels_key") || "");
       setPixabayKey(localStorage.getItem("novaclip_pixabay_key") || "");
@@ -133,12 +133,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <input
               type="text"
               className="input"
-              placeholder="Default model: meta-llama/llama-3.3-70b-instruct:free"
+              placeholder="Default model: openrouter/free"
               value={openrouterModel}
               onChange={(e) => setOpenrouterModel(e.target.value)}
               style={{ width: "100%", fontFamily: "monospace", fontSize: "0.78rem" }}
             />
-            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Allows using free OpenRouter models (Llama 3.3 70B, DeepSeek R1, Qwen 2.5)</span>
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Allows using free OpenRouter models (e.g. openrouter/free router, Gemma 4, Nemotron 3, GPT-OSS 20B, DeepSeek R1)</span>
           </div>
 
           {/* Deepgram API Key */}

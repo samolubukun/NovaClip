@@ -130,7 +130,7 @@ Example:
     }
 
     async fn call_openrouter(&self, system_prompt: &str, user_text: &str) -> Result<Vec<ScriptItem>> {
-        let model = if self.provider_or_model.is_empty() { "meta-llama/llama-3.3-70b-instruct:free" } else { &self.provider_or_model };
+        let model = if self.provider_or_model.is_empty() { "openrouter/free" } else { &self.provider_or_model };
         let url = "https://openrouter.ai/api/v1/chat/completions";
 
         let body = json!({

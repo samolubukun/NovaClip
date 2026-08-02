@@ -17,6 +17,12 @@ const ASPECT_RATIOS = [
 const LLM_PROVIDERS = [
   { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (Recommended Default)", icon: Sparkles },
   { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro (Deep Reasoning)", icon: Sparkles },
+  { id: "openrouter/free", label: "OpenRouter — Free Models Router (Auto-Select)", icon: Cpu },
+  { id: "nvidia/nemotron-3-nano-30b-a3b:free", label: "OpenRouter — Nvidia Nemotron 3 Nano (:free)", icon: Cpu },
+  { id: "google/gemma-4-31b:free", label: "OpenRouter — Google Gemma 4 31B (:free)", icon: Cpu },
+  { id: "openai/gpt-oss-20b:free", label: "OpenRouter — OpenAI GPT-OSS 20B (:free)", icon: Cpu },
+  { id: "poolside/laguna-s-2.1:free", label: "OpenRouter — Poolside Laguna S 2.1 (:free)", icon: Cpu },
+  { id: "cohere/north-mini-code-20260617:free", label: "OpenRouter — Cohere North Mini Code (:free)", icon: Cpu },
   { id: "meta-llama/llama-3.3-70b-instruct:free", label: "OpenRouter — Llama 3.3 70B (:free)", icon: Cpu },
   { id: "deepseek/deepseek-r1:free", label: "OpenRouter — DeepSeek R1 (:free)", icon: Cpu },
   { id: "qwen/qwen-2.5-72b-instruct:free", label: "OpenRouter — Qwen 2.5 72B (:free)", icon: Cpu },
