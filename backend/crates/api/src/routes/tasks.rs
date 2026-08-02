@@ -983,19 +983,26 @@ async fn generate_studio_script(
     let vibe = req.vibe.unwrap_or_else(|| "aesthetic".into());
     let provider = req.llm_provider.unwrap_or_else(|| "gemini-3.1-flash-lite".into());
 
-    // Use API key from request, falling back to environment variable
-    let key = req.api_key
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY").ok()
         .filter(|k| !k.trim().is_empty())
+        .or_else(|| req.api_key.clone().filter(|k| k.starts_with("sk-or-")))
+        .unwrap_or_default();
+
+    let gemini_key = req.api_key
+        .filter(|k| !k.trim().is_empty() && !k.starts_with("sk-or-"))
         .or_else(|| std::env::var("GEMINI_API_KEY").ok())
         .unwrap_or_default();
 
-    if key.is_empty() {
+    let is_openrouter = provider.contains('/') || provider == "openrouter/free";
+
+    if is_openrouter && openrouter_key.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "OpenRouter API key required — set one in Settings or add OPENROUTER_API_KEY to .env"}))));
+    } else if !is_openrouter && gemini_key.is_empty() {
         return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Gemini API key required — set one in Settings or add GEMINI_API_KEY to .env"}))));
     }
 
     let duration = req.duration.unwrap_or(60);
-    let openrouter_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
-    let processor = StudioLlmProcessor::new(key.clone(), provider, openrouter_key);
+    let processor = StudioLlmProcessor::new(gemini_key, provider, openrouter_key);
     let script = processor.generate_topic_script(topic, &vibe, duration)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
