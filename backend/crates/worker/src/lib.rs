@@ -145,6 +145,10 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
             .unwrap_or_else(|_| "models/vosk-model-small-en-us-0.15".into()),
         whisper_model_path: std::env::var("WHISPER_MODEL_PATH")
             .unwrap_or_else(|_| "models/ggml-base.bin".into()),
+        pyannote_segmentation_model_path: std::env::var("PYANNOTE_SEGMENTATION_MODEL_PATH")
+            .unwrap_or_else(|_| "models/segmentation-3.0.onnx".into()),
+        pyannote_embedding_model_path: std::env::var("PYANNOTE_EMBEDDING_MODEL_PATH")
+            .unwrap_or_else(|_| "models/wespeaker_en_voxceleb_CAM++.onnx".into()),
         pexels_api_key: std::env::var("PEXELS_API_KEY").ok().filter(|s| !s.is_empty()),
         pixabay_api_key: std::env::var("PIXABAY_API_KEY").ok().filter(|s| !s.is_empty()),
         studio_payload: task.studio_payload.as_ref().and_then(|s| serde_json::from_str(s).ok()),
@@ -229,6 +233,8 @@ async fn process_standard_task(
         &cfg.deepgram_api_key,
         Path::new(&cfg.vosk_model_path),
         Path::new(&cfg.whisper_model_path),
+        Path::new(&cfg.pyannote_segmentation_model_path),
+        Path::new(&cfg.pyannote_embedding_model_path),
     ).await?;
     let transcript_text = build_transcript_for_prompt(&transcript);
 

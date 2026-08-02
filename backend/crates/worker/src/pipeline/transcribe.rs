@@ -1,4 +1,4 @@
-﻿use anyhow::{Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
@@ -128,10 +128,13 @@ async fn decode_pcm_f32le(audio_path: &Path) -> Result<Vec<f32>> {
     Ok(pcm)
 }
 
+
 /// Transcribe audio locally using Vosk batch recognition
 pub async fn transcribe_with_vosk(
     audio_path: &Path,
     model_path: &Path,
+    seg_model: &Path,
+    emb_model: &Path,
 ) -> Result<TimestampedTranscript> {
     info!(
         "Transcribing locally with Vosk: {} (model: {})",
@@ -211,7 +214,7 @@ pub async fn transcribe_with_vosk(
 
     let mut transcript = transcript_res?;
     if !transcript.words.is_empty() {
-        diarize_words_local(audio_path, &mut transcript.words).await.ok();
+        diarize_words_local(audio_path, &mut transcript.words, seg_model, emb_model).await.ok();
     }
     Ok(transcript)
 }
@@ -220,6 +223,8 @@ pub async fn transcribe_with_vosk(
 pub async fn transcribe_with_whisper(
     audio_path: &Path,
     model_path: &Path,
+    seg_model: &Path,
+    emb_model: &Path,
 ) -> Result<TimestampedTranscript> {
     info!(
         "Transcribing locally with Whisper: {} (model: {})",
@@ -328,7 +333,7 @@ pub async fn transcribe_with_whisper(
 
     let mut transcript = transcript_res?;
     if !transcript.words.is_empty() {
-        diarize_words_local(audio_path, &mut transcript.words).await.ok();
+        diarize_words_local(audio_path, &mut transcript.words, seg_model, emb_model).await.ok();
     }
     Ok(transcript)
 }
@@ -340,135 +345,21 @@ pub async fn transcribe_audio(
     deepgram_api_key: &str,
     vosk_model_path: &Path,
     whisper_model_path: &Path,
+    seg_model: &Path,
+    emb_model: &Path,
 ) -> Result<TimestampedTranscript> {
     match provider.to_lowercase().as_str() {
-        "vosk" => transcribe_with_vosk(audio_path, vosk_model_path).await,
-        "whisper" => transcribe_with_whisper(audio_path, whisper_model_path).await,
+        "vosk" => transcribe_with_vosk(audio_path, vosk_model_path, seg_model, emb_model).await,
+        "whisper" => transcribe_with_whisper(audio_path, whisper_model_path, seg_model, emb_model).await,
         _ => transcribe_with_deepgram(audio_path, deepgram_api_key).await,
     }
 }
 
-/// Run Polyvoice neural speaker diarization (Silero VAD + WeSpeaker + Pyannote segmentation)
-pub fn diarize_words_polyvoice(
-    audio_path: &Path,
-    words: &mut Vec<DeepgramWord>,
-) -> Result<()> {
-    if words.is_empty() {
-        return Ok(());
-    }
-
-    let temp_wav = audio_path.with_extension("polyvoice_tmp.wav");
-    let status = std::process::Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-i",
-            audio_path.to_str().unwrap_or_default(),
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-f",
-            "wav",
-            temp_wav.to_str().unwrap_or_default(),
-        ])
-        .status()?;
-
-    if !status.success() {
-        return Ok(());
-    }
-
-    let pipeline_res = polyvoice::Pipeline::builder()
-        .config(polyvoice::PipelineConfig {
-            profile: polyvoice::types::Profile::Balanced,
-            ..Default::default()
-        })
-        .with_models_from(polyvoice::models::ModelRegistry::default()?)
-        .build();
-
-    let pipeline = match pipeline_res {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("Polyvoice pipeline init error: {}", e);
-            let _ = std::fs::remove_file(&temp_wav);
-            return Ok(());
-        }
-    };
-
-    let (samples, sr) = match polyvoice::wav::load_audio(&temp_wav) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("Polyvoice load audio error: {}", e);
-            let _ = std::fs::remove_file(&temp_wav);
-            return Ok(());
-        }
-    };
-
-    let sample_rate = match polyvoice::types::SampleRate::new(sr) {
-        Some(sr) => sr,
-        None => {
-            let _ = std::fs::remove_file(&temp_wav);
-            return Ok(());
-        }
-    };
-
-    let result = match pipeline.run(&samples, sample_rate) {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("Polyvoice diarization run error: {}", e);
-            let _ = std::fs::remove_file(&temp_wav);
-            return Ok(());
-        }
-    };
-
-    let _ = std::fs::remove_file(&temp_wav);
-
-    if result.turns.is_empty() {
-        return Ok(());
-    }
-
-    let mut speaker_map: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-    let mut next_id = 0;
-
-    for word in words.iter_mut() {
-        let w_center = (word.start + word.end) / 2.0;
-        let matched_turn = result.turns.iter().find(|t| {
-            let s = t.time.start as f64;
-            let e = t.time.end as f64;
-            w_center >= s && w_center <= e
-        }).or_else(|| {
-            result.turns.iter().find(|t| {
-                let s = t.time.start as f64;
-                let e = t.time.end as f64;
-                word.start >= s - 0.2 && word.start <= e + 0.2
-            })
-        });
-
-        if let Some(turn) = matched_turn {
-            let spk_str = turn.speaker.to_string();
-            let spk_id = *speaker_map.entry(spk_str).or_insert_with(|| {
-                let id = next_id;
-                next_id += 1;
-                id
-            });
-            word.speaker = Some(spk_id);
-        } else {
-            word.speaker = Some(0);
-        }
-    }
-
-    info!(
-        "Polyvoice neural speaker diarization assigned {} turns across {} words",
-        result.turns.len(),
-        words.len()
-    );
-    Ok(())
-}
-
-/// Run local speaker diarizer using Polyvoice with fallback to Python MFCC clustering
 pub async fn diarize_words_local(
     audio_path: &Path,
     words: &mut Vec<DeepgramWord>,
+    _segmentation_model: &Path,
+    _embedding_model: &Path,
 ) -> Result<()> {
     if words.is_empty() {
         return Ok(());
@@ -477,88 +368,72 @@ pub async fn diarize_words_local(
     let audio_path_buf = audio_path.to_path_buf();
     let mut words_clone = words.clone();
 
-    // Try Rust Polyvoice neural diarization first
-    let polyvoice_res = tokio::task::spawn_blocking(move || {
-        diarize_words_polyvoice(&audio_path_buf, &mut words_clone)?;
-        Ok::<_, anyhow::Error>(words_clone)
-    })
-    .await;
+    let res = tokio::task::spawn_blocking(move || -> Result<Vec<DeepgramWord>> {
+        use speakrs::{ExecutionMode, OwnedDiarizationPipeline};
 
-    if let Ok(Ok(updated_words)) = polyvoice_res {
-        let has_speakers = updated_words.iter().any(|w| w.speaker.is_some());
-        if has_speakers {
-            *words = updated_words;
-            return Ok(());
+        let temp_wav = audio_path_buf.with_extension("pyannote_tmp.wav");
+        let status = std::process::Command::new("ffmpeg")
+            .args([
+                "-y", "-i", audio_path_buf.to_str().unwrap_or_default(),
+                "-vn", "-ac", "1", "-ar", "16000", "-f", "wav",
+                temp_wav.to_str().unwrap_or_default(),
+            ])
+            .status()?;
+        
+        if !status.success() {
+            anyhow::bail!("FFmpeg conversion failed");
         }
-    }
 
-    // Fallback to Python MFCC Cosine clustering
-    diarize_words_python(audio_path, words).await
-}
+        let mut reader = hound::WavReader::open(&temp_wav)?;
+        let samples: Vec<f32> = reader.samples::<i16>()
+            .map(|s| (s.unwrap_or(0) as f32) / 32768.0)
+            .collect();
+        let _ = std::fs::remove_file(&temp_wav);
 
-/// Fallback Python MFCC Cosine clustering
-pub async fn diarize_words_python(
-    audio_path: &Path,
-    words: &mut Vec<DeepgramWord>,
-) -> Result<()> {
-    if words.is_empty() {
-        return Ok(());
-    }
+        let mut pipeline = OwnedDiarizationPipeline::from_pretrained(ExecutionMode::Cpu)?;
+        let result = pipeline.run(&samples)?;
 
-    let worker_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let root_dir = if worker_dir.ends_with("worker") {
-        worker_dir.parent().and_then(|p| p.parent()).unwrap_or(&worker_dir)
-    } else if worker_dir.ends_with("backend") {
-        &worker_dir
-    } else {
-        &worker_dir
-    };
+        struct SpeakerSegment { start: f64, end: f64, speaker: String }
+        let segments: Vec<SpeakerSegment> = result.discrete_diarization.to_segments()
+            .into_iter()
+            .map(|s| SpeakerSegment {
+                start: s.start as f64,
+                end: s.end as f64,
+                speaker: s.speaker,
+            })
+            .collect();
 
-    let python_bin = if cfg!(target_os = "windows") {
-        root_dir.join("novaclip_reframe/venv/Scripts/python.exe")
-    } else {
-        root_dir.join("novaclip_reframe/venv/bin/python")
-    };
+        println!("--> speakrs extracted {} speaker segments", segments.len());
 
-    let script_path = root_dir.join("novaclip_reframe/novaclip_reframe/diarize.py");
+        let mut speaker_map = std::collections::HashMap::new();
+        let mut next_id = 0;
 
-    if !python_bin.exists() || !script_path.exists() {
-        tracing::warn!("Python venv or diarize.py not found at {:?}, skipping local diarization", script_path);
-        return Ok(());
-    }
-
-    let json_input = serde_json::to_string(words)?;
-
-    let mut child = tokio::process::Command::new(python_bin)
-        .arg(&script_path)
-        .arg("--audio")
-        .arg(audio_path)
-        .arg("--num-speakers")
-        .arg("2")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(json_input.as_bytes()).await?;
-        stdin.flush().await?;
-    }
-
-    let output = child.wait_with_output().await?;
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
-        tracing::warn!("Local diarization script warning/error: {}", err);
-        return Ok(());
-    }
-
-    let stdout_str = String::from_utf8_lossy(&output.stdout);
-    if let Ok(updated_words) = serde_json::from_str::<Vec<DeepgramWord>>(&stdout_str) {
-        if updated_words.len() == words.len() {
-            *words = updated_words;
-            info!("Local speaker diarization applied to {} words", words.len());
+        for word in words_clone.iter_mut() {
+            let word_mid = word.start + (word.end - word.start) / 2.0;
+            let mut found = false;
+            for segment in &segments {
+                if word_mid >= segment.start && word_mid <= segment.end {
+                    let spk_id = *speaker_map.entry(segment.speaker.clone()).or_insert_with(|| {
+                        let id = next_id;
+                        next_id += 1;
+                        id
+                    });
+                    word.speaker = Some(spk_id);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                word.speaker = Some(0);
+            }
         }
+        
+        Ok(words_clone)
+    }).await?;
+
+    if let Ok(updated_words) = res {
+        *words = updated_words;
+        tracing::info!("speakrs diarization applied successfully to {} words", words.len());
     }
 
     Ok(())

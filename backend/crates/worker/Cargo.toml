@@ -11,6 +11,10 @@ path = "src/lib.rs"
 name = "novaclip-worker"
 path = "src/main.rs"
 
+[[bin]]
+name = "test_diarize"
+path = "src/bin/test_diarize.rs"
+
 [dependencies]
 novaclip-db = { path = "../db" }
 tokio = { workspace = true }
@@ -32,4 +36,6 @@ bytes = { workspace = true }
 base64 = { workspace = true }
 vosk = "0.3.1"
 whisper-rs = "0.14.4"
-polyvoice = { version = "0.14.0", features = ["pipeline-full", "audio-io"] }
+pyannote-rs = { path = "../pyannote-rs" }
+speakrs = "0.5"
+hound = "3.5"

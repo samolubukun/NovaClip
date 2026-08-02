@@ -78,6 +78,8 @@ pub struct PipelineConfig {
     pub stt_provider: String,
     pub vosk_model_path: String,
     pub whisper_model_path: String,
+    pub pyannote_segmentation_model_path: String,
+    pub pyannote_embedding_model_path: String,
     pub pexels_api_key: Option<String>,
     pub pixabay_api_key: Option<String>,
     pub studio_payload: Option<serde_json::Value>,
