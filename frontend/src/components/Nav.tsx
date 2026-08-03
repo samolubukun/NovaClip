@@ -83,11 +83,11 @@ export default function Nav() {
               <Link to="/" style={tabStyle("clipper")}>
                 <Scissors size={14} /> Nova Clipper
               </Link>
-              <Link to="/novaedit" style={tabStyle("novaedit")}>
-                <Wand2 size={14} /> Nova Edit
-              </Link>
               <Link to="/studio" style={tabStyle("studio")}>
                 <Film size={14} /> Nova Studio
+              </Link>
+              <Link to="/novaedit" style={tabStyle("novaedit")}>
+                <Wand2 size={14} /> Nova Edit
               </Link>
             </div>
           </div>
