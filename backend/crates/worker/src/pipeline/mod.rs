@@ -11,6 +11,7 @@ pub mod translate;
 pub mod studio_llm;
 pub mod tts;
 pub mod scraper;
+pub mod nova_edit;
 
 use serde::{Deserialize, Serialize};
 
@@ -89,4 +90,7 @@ pub struct PipelineConfig {
     pub watermark_position: String,
     pub watermark_opacity: f64,
     pub watermark_path: Option<String>,
+    pub novaedit_payload: Option<serde_json::Value>,
+    pub edit_plan: Option<serde_json::Value>,
+    pub review_score: Option<serde_json::Value>,
 }
