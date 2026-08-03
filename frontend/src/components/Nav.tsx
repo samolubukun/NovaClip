@@ -1,22 +1,62 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { History, Zap, Settings, Github, Scissors, Film } from "lucide-react";
+import { History, Zap, Settings, Github, Scissors, Film, Wand2 } from "lucide-react";
 import { SettingsModal } from "./SettingsModal";
+
+type Mode = "clipper" | "studio" | "novaedit";
 
 export default function Nav() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const location = useLocation();
-  const [isStudio, setIsStudio] = useState(location.pathname === "/studio");
+  const historyActive = location.pathname === "/history";
+  const [mode, setMode] = useState<Mode>(() => {
+    if (location.pathname === "/studio") return "studio";
+    if (location.pathname === "/novaedit") return "novaedit";
+    return "clipper";
+  });
 
   useEffect(() => {
-    if (location.pathname === "/studio") {
-      setIsStudio(true);
-    } else if (location.pathname.startsWith("/task/")) {
-      setIsStudio(sessionStorage.getItem("nova_last_task_type") === "studio");
-    } else {
-      setIsStudio(false);
-    }
+    const syncMode = () => {
+      if (location.pathname === "/studio") {
+      setMode("studio");
+      } else if (location.pathname === "/novaedit") {
+      setMode("novaedit");
+      } else if (location.pathname.startsWith("/task/")) {
+      const t = sessionStorage.getItem("nova_last_task_type");
+      setMode(t === "studio" ? "studio" : t === "agentic" ? "novaedit" : "clipper");
+      } else if (location.pathname !== "/history") {
+      setMode("clipper");
+      }
+    };
+
+    syncMode();
+    window.addEventListener("nova-task-type-change", syncMode);
+    return () => window.removeEventListener("nova-task-type-change", syncMode);
   }, [location.pathname]);
+
+  const tabStyle = (tab: Mode) => {
+    const active = !historyActive && mode === tab;
+    const colors = {
+      clipper: { background: "var(--accent)", color: "#000", glow: "rgba(255,224,0,0.22)" },
+      novaedit: { background: "#22d3ee", color: "#001014", glow: "rgba(34,211,238,0.22)" },
+      studio: { background: "#8b5cf6", color: "#fff", glow: "rgba(139,92,246,0.28)" },
+    }[tab];
+
+    return {
+      padding: "0.35rem 0.75rem",
+      borderRadius: "8px",
+      fontSize: "0.78rem",
+      fontWeight: 800,
+      textDecoration: "none",
+      display: "flex",
+      alignItems: "center",
+      gap: "0.4rem",
+      background: active ? colors.background : "transparent",
+      color: active ? colors.color : "#aaa",
+      boxShadow: active ? `0 0 14px ${colors.glow}` : "none",
+      transition: "all 0.15s",
+    } as const;
+  };
 
   return (
     <>
@@ -40,40 +80,13 @@ export default function Nav() {
 
             {/* Mode Switcher Pill */}
             <div style={{ display: "flex", background: "#0c0c0f", padding: "0.2rem", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <Link
-                to="/"
-                style={{
-                  padding: "0.35rem 0.75rem",
-                  borderRadius: "8px",
-                  fontSize: "0.78rem",
-                  fontWeight: 800,
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  background: !isStudio ? "var(--accent)" : "transparent",
-                  color: !isStudio ? "#000" : "#aaa",
-                  transition: "all 0.15s",
-                }}
-              >
+              <Link to="/" style={tabStyle("clipper")}>
                 <Scissors size={14} /> Nova Clipper
               </Link>
-              <Link
-                to="/studio"
-                style={{
-                  padding: "0.35rem 0.75rem",
-                  borderRadius: "8px",
-                  fontSize: "0.78rem",
-                  fontWeight: 800,
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  background: isStudio ? "var(--accent)" : "transparent",
-                  color: isStudio ? "#000" : "#aaa",
-                  transition: "all 0.15s",
-                }}
-              >
+              <Link to="/novaedit" style={tabStyle("novaedit")}>
+                <Wand2 size={14} /> Nova Edit
+              </Link>
+              <Link to="/studio" style={tabStyle("studio")}>
                 <Film size={14} /> Nova Studio
               </Link>
             </div>
@@ -87,7 +100,16 @@ export default function Nav() {
             >
               <Settings size={15} /> Settings
             </button>
-            <Link to="/history" className="btn btn-ghost btn-sm">
+            <Link
+              to="/history"
+              className="btn btn-ghost btn-sm"
+              style={{
+                background: historyActive ? "rgba(255,255,255,0.12)" : undefined,
+                color: historyActive ? "#fff" : undefined,
+                border: historyActive ? "1px solid rgba(255,255,255,0.28)" : undefined,
+                boxShadow: historyActive ? "0 0 14px rgba(255,255,255,0.16)" : "none",
+              }}
+            >
               <History size={15} /> History
             </Link>
             <a href="https://github.com/samolubukun/NovaClip" target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
