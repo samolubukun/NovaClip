@@ -36,6 +36,8 @@ pub fn tasks_router() -> Router<AppState> {
         .route("/tasks/{id}/watermark", post(upload_watermark))
         .route("/tasks/ai-prompt", post(ai_prompt_handler))
         .route("/tasks/ai-prompt/chat", post(ai_chat_handler))
+        .route("/tasks/{id}/approve-edit-plan", post(approve_edit_plan))
+        .route("/tasks/{id}/replan", post(replan_task))
 }
 
 #[derive(Deserialize)]
@@ -166,6 +168,8 @@ struct CreateTaskRequest {
     source_title: Option<String>,
     /// Studio payload for faceless AI video generation tasks (source_type = "studio")
     studio_payload: Option<StudioPayload>,
+    /// NovaEdit payload for agentic editing tasks (source_type = "agentic")
+    novaedit_payload: Option<serde_json::Value>,
     highlight_color: Option<String>,
     caption_animation: Option<String>,
     auto_emojis: Option<bool>,
@@ -198,6 +202,8 @@ async fn create_task(
 
     let source_type = if url.starts_with("studio://") {
         "studio"
+    } else if url.starts_with("novaedit://") || url.starts_with("agentic://") {
+        "agentic"
     } else if url.contains("youtube.com") || url.contains("youtu.be") {
         "youtube"
     } else if url.starts_with("upload://") {
@@ -236,6 +242,7 @@ async fn create_task(
     let translate_language = req.translate_language.clone().unwrap_or_default();
     let stt_provider = req.stt_provider.clone().unwrap_or_else(|| "deepgram".into());
     let studio_payload_json = req.studio_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
+    let novaedit_payload_json = req.novaedit_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
 
     let source_title = req.source_title.unwrap_or_else(|| url.clone());
 
@@ -257,8 +264,8 @@ async fn create_task(
             reframe_frame_skip, reframe_layout, speaker_active_switch, split_divider,
             originality_boost, translate_language, giphy_api_key,
             studio_payload, highlight_color, caption_animation, auto_emojis,
-            watermark_position, watermark_opacity)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+            watermark_position, watermark_opacity, novaedit_payload)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
@@ -295,6 +302,7 @@ async fn create_task(
     .bind(auto_emojis)
     .bind(&watermark_position)
     .bind(watermark_opacity)
+    .bind(novaedit_payload_json)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -362,6 +370,9 @@ async fn get_task(
         "stage_timings": stage_timings,
         "error_message": task.error_message,
         "studio_payload": task.studio_payload.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+        "novaedit_payload": task.novaedit_payload.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+        "edit_plan": task.edit_plan.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+        "review_score": task.review_score.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
         "highlight_color": task.highlight_color,
         "caption_animation": task.caption_animation,
         "auto_emojis": task.auto_emojis,
@@ -1012,6 +1023,149 @@ async fn generate_studio_script(
     }
 
     Ok(Json(json!({ "script": script })))
+}
+
+#[derive(Deserialize)]
+struct ApproveEditPlanRequest {
+    #[serde(default)]
+    edit_plan: Option<Value>,
+}
+
+/// Approve (and optionally edit) the Director's edit plan, then resume rendering.
+async fn approve_edit_plan(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ApproveEditPlanRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let id_str = id.to_string();
+
+    let row: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT source_type, novaedit_payload, edit_plan FROM tasks WHERE id = ?"
+    )
+    .bind(&id_str)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let (source_type, payload_raw, current_plan) = row
+        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))))?;
+
+    if source_type != "agentic" {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Not an agentic edit task"}))));
+    }
+
+    // User may have edited the plan — validate and store it
+    if let Some(new_plan) = req.edit_plan {
+        let mut plan: novaclip_worker::pipeline::nova_edit::NovaEditPlan = serde_json::from_value(new_plan.clone())
+            .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": format!("Invalid edit plan: {}", e)}))))?;
+        let total: f64 = plan.entries.iter().map(|en| (en.end_trim - en.start_trim).max(0.0)).sum();
+        plan.total_duration = total;
+        sqlx::query("UPDATE tasks SET edit_plan = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(serde_json::to_string(&plan).unwrap_or_default())
+            .bind(&id_str)
+            .execute(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    } else if current_plan.is_none() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "No edit plan exists to approve"}))));
+    }
+
+    // Move payload stage → editing
+    if let Some(raw) = payload_raw {
+        let mut payload: Value = serde_json::from_str(&raw).unwrap_or(json!({}));
+        payload["stage"] = json!("editing");
+        if payload["retries_used"].is_null() {
+            payload["retries_used"] = json!(0);
+        }
+        sqlx::query("UPDATE tasks SET novaedit_payload = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(serde_json::to_string(&payload).unwrap_or_default())
+            .bind(&id_str)
+            .execute(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    }
+
+    sqlx::query(
+        "UPDATE tasks SET status = 'queued', progress = 50, progress_message = 'Edit approved — rendering...', error_message = NULL, completed_at = NULL, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(&id_str)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    state.job_tx.send(id).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "Worker not available"}))))?;
+
+    Ok(Json(json!({"task_id": id_str, "message": "Edit plan approved — rendering started"})))
+}
+
+#[derive(Deserialize)]
+struct ReplanRequest {
+    message: String,
+}
+
+/// Re-run the agentic edit with human feedback (after completion or before approval).
+async fn replan_task(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ReplanRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let message = req.message.trim().to_string();
+    if message.is_empty() || message.chars().count() > 4000 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Feedback message must be 1-4000 characters"}))));
+    }
+
+    let id_str = id.to_string();
+
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT source_type, novaedit_payload FROM tasks WHERE id = ?"
+    )
+    .bind(&id_str)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let (source_type, payload_raw) = row
+        .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))))?;
+
+    if source_type != "agentic" {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Not an agentic edit task"}))));
+    }
+
+    let mut payload: Value = payload_raw
+        .and_then(|r| serde_json::from_str(&r).ok())
+        .unwrap_or(json!({}));
+    payload["stage"] = json!("editing");
+    payload["retries_used"] = json!(0);
+    payload["user_feedback"] = json!(message.clone());
+    if payload["feedback_history"].as_array().is_none() {
+        payload["feedback_history"] = json!([]);
+    }
+    if let Some(arr) = payload["feedback_history"].as_array_mut() {
+        if !arr.iter().any(|v| v.as_str() == Some(&message)) {
+            arr.push(json!(message.clone()));
+        }
+    }
+
+    sqlx::query("UPDATE tasks SET novaedit_payload = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(serde_json::to_string(&payload).unwrap_or_default())
+        .bind(&id_str)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    sqlx::query(
+        "UPDATE tasks SET status = 'queued', progress = 50, progress_message = 'Re-planning with your feedback...', error_message = NULL, completed_at = NULL, updated_at = datetime('now') WHERE id = ?"
+    )
+    .bind(&id_str)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    state.job_tx.send(id).await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "Worker not available"}))))?;
+
+    Ok(Json(json!({"task_id": id_str, "message": "Re-planning started with your feedback"})))
 }
 
 async fn upload_watermark(
