@@ -551,6 +551,30 @@ export default function Studio() {
         </motion.div>
 
       </div>
+
+      {/* Nova Studio Footer */}
+      <section style={{ borderTop: "1px solid rgba(139,92,246,0.18)", background: "#0b0b0e", padding: "2.2rem 0", marginTop: "2.5rem" }}>
+        <div className="container" style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 1.5rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "1.5rem", textAlign: "center" }}>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#8b5cf6", margin: 0 }}>SCRIPT</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>AI-shaped storytelling</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#a78bfa", margin: 0 }}>VOICE</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Natural neural narration</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#c4b5fd", margin: 0 }}>VISUALS</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Stock media matched to your vibe</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#ddd6fe", margin: 0 }}>FINISH</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Captions, music, and branding</p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
