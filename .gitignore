@@ -37,6 +37,7 @@ frontend/tsconfig.tsbuildinfo
 .env
 .env.local
 *.user
+opencode.json
 
 # Antigravity IDE / Brain
 .gemini/
