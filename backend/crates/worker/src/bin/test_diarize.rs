@@ -58,6 +58,9 @@ async fn main() -> anyhow::Result<()> {
         watermark_position: "".into(),
         watermark_opacity: 1.0,
         watermark_path: None,
+        novaedit_payload: None,
+        edit_plan: None,
+        review_score: None,
     };
 
     let whisper_model = PathBuf::from(&cfg.whisper_model_path);
