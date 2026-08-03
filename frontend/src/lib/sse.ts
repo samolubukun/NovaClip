@@ -38,7 +38,7 @@ export function createTaskSSE(
   es.addEventListener("ping", () => {});
 
   es.onerror = () => {
-    // SSE connection dropped — task is likely done, just close
+    // SSE connection dropped; the task is likely done, so just close.
     es.close();
   };
 
