@@ -389,7 +389,7 @@ export default function Home() {
                     if (chatMessages.length === 0) {
                       setChatMessages([{
                         role: "assistant",
-                        text: "Hey, I'm Nova! Paste a video link (or upload a file) above, then tell me what kind of clips you want — or just say \"make me viral clips\" and I'll ask you a few quick questions before I start clipping.",
+                        text: "Hey, I'm Nova! Paste a video link (or upload a file) above, then tell me what kind of clips you want, or just say \"make me viral clips\" and I'll ask you a few quick questions before I start clipping.",
                       }]);
                     }
                   }}
