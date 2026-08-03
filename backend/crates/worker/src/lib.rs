@@ -158,10 +158,18 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
         watermark_position: task.watermark_position.clone(),
         watermark_opacity: task.watermark_opacity,
         watermark_path: task.watermark_path.clone(),
+        novaedit_payload: task.novaedit_payload.as_ref().and_then(|s| serde_json::from_str(s).ok()),
+        edit_plan: task.edit_plan.as_ref().and_then(|s| serde_json::from_str(s).ok()),
+        review_score: task.review_score.as_ref().and_then(|s| serde_json::from_str(s).ok()),
     };
 
     let output_dir = PathBuf::from(&cfg.output_dir).join(task_id.to_string());
     tokio::fs::create_dir_all(&output_dir).await?;
+
+    if cfg.source_type == "agentic" {
+        // NovaEdit fully manages its own status transitions (awaiting_approval / completed)
+        return pipeline::nova_edit::process_nova_edit_task(&db, &cfg, &output_dir, &task_id_str).await;
+    }
 
     if cfg.source_type == "studio" {
         process_studio_task(&db, &cfg, &output_dir, &task_id_str).await?;
