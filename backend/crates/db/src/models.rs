@@ -50,6 +50,12 @@ pub struct Task {
     pub watermark_position: String,
     pub watermark_opacity: f64,
     pub watermark_path: Option<String>,
+    /// JSON-encoded NovaEditPayload for agentic editing tasks (source_type = "agentic")
+    pub novaedit_payload: Option<String>,
+    /// JSON-encoded NovaEditPlan (agentic edit plan / EDL)
+    pub edit_plan: Option<String>,
+    /// JSON-encoded NovaEditReview (agentic review scores)
+    pub review_score: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
