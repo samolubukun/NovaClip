@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ExternalLink, Trash2, Search, Play, X, Video, Film } from "lucide-react";
+import { ArrowLeft, ExternalLink, Trash2, Search, Play, X, Video, Film, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
@@ -42,8 +42,8 @@ export default function History() {
   const [firstClipMap, setFirstClipMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "studio" | "clipper">("all");
-  const [selectedTask, setSelectedTask] = useState<{ id: string; title: string; clips: Clip[] } | null>(null);
+  const [filter, setFilter] = useState<"all" | "studio" | "novaedit" | "clipper">("all");
+  const [selectedTask, setSelectedTask] = useState<{ id: string; title: string; sourceType: string; clips: Clip[] } | null>(null);
 
   useEffect(() => {
     api.listTasks().then(async r => {
@@ -75,12 +75,13 @@ export default function History() {
     toast.success("Task deleted");
   };
 
-  const openPreview = async (taskId: string, title: string) => {
+  const openPreview = async (taskId: string, title: string, sourceType: string) => {
     try {
       const fullTask = await api.getTask(taskId);
       setSelectedTask({
         id: taskId,
         title: title || fullTask.source_title || fullTask.source_url,
+        sourceType,
         clips: fullTask.clips || [],
       });
     } catch (e) {
@@ -90,12 +91,18 @@ export default function History() {
 
   const filteredTasks = tasks.filter(t => {
     if (filter === "studio" && t.source_type !== "studio") return false;
-    if (filter === "clipper" && t.source_type === "studio") return false;
+    if (filter === "novaedit" && t.source_type !== "agentic") return false;
+    if (filter === "clipper" && (t.source_type === "studio" || t.source_type === "agentic")) return false;
     return (
       (t.source_title || t.source_url).toLowerCase().includes(search.toLowerCase()) ||
       t.id.toLowerCase().includes(search.toLowerCase())
     );
   });
+  const selectedAccent = selectedTask?.sourceType === "studio"
+    ? "#8b5cf6"
+    : selectedTask?.sourceType === "agentic"
+      ? "#22d3ee"
+      : "var(--accent)";
 
   return (
     <div style={{ paddingTop: "64px", minHeight: "100vh", background: "#0b0b0e", color: "#fff" }}>
@@ -134,7 +141,15 @@ export default function History() {
 
         {/* Filter Tabs */}
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
-          {(["all", "clipper", "studio"] as const).map(f => (
+          {(["all", "clipper", "novaedit", "studio"] as const).map(f => {
+            const colors = f === "clipper"
+              ? { background: "var(--accent)", color: "#000" }
+              : f === "novaedit"
+                ? { background: "#22d3ee", color: "#001014" }
+                : f === "studio"
+                  ? { background: "#8b5cf6", color: "#fff" }
+                  : { background: "#fff", color: "#000" };
+            return (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -145,13 +160,14 @@ export default function History() {
                 fontWeight: 800,
                 border: "none",
                 cursor: "pointer",
-                background: filter === f ? "var(--accent)" : "rgba(255,255,255,0.06)",
-                color: filter === f ? "#000" : "#aaa",
+                background: filter === f ? colors.background : "rgba(255,255,255,0.06)",
+                color: filter === f ? colors.color : "#aaa",
               }}
             >
-              {f === "all" ? "All" : f === "clipper" ? "Nova Clipper" : "Nova Studio"}
+              {f === "all" ? "All" : f === "clipper" ? "Nova Clipper" : f === "novaedit" ? "Nova Edit" : "Nova Studio"}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {loading && (
@@ -170,7 +186,13 @@ export default function History() {
 
         {/* Serivia-inspired Task Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1.25rem" }}>
-          {filteredTasks.map((task, i) => (
+          {filteredTasks.map((task, i) => {
+            const theme = task.source_type === "studio"
+              ? { accent: "#8b5cf6", soft: "rgba(139,92,246,0.18)", glow: "rgba(139,92,246,0.35)", label: "Faceless AI" }
+              : task.source_type === "agentic"
+                ? { accent: "#22d3ee", soft: "rgba(34,211,238,0.16)", glow: "rgba(34,211,238,0.35)", label: "Nova Edit" }
+                : { accent: "var(--accent)", soft: "rgba(255,224,0,0.14)", glow: "rgba(255,224,0,0.35)", label: "Clip" };
+            return (
             <motion.div
               key={task.id}
               initial={{ opacity: 0, y: 16 }}
@@ -186,7 +208,7 @@ export default function History() {
                 display: "flex",
                 flexDirection: "column",
               }}
-              onClick={() => openPreview(task.id, task.source_title || task.source_url)}
+              onClick={() => openPreview(task.id, task.source_title || task.source_url, task.source_type)}
             >
               {/* Card Banner / Real Video Frame Preview */}
               <div style={{ position: "relative", height: "160px", background: "#050507", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -196,8 +218,10 @@ export default function History() {
                     preload="metadata"
                     style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }}
                   />
+                ) : task.source_type === "agentic" ? (
+                  <Wand2 size={36} color={theme.accent} style={{ opacity: 0.5 }} />
                 ) : (
-                  <Video size={36} color="var(--accent)" style={{ opacity: 0.4 }} />
+                  <Video size={36} color={theme.accent} style={{ opacity: 0.4 }} />
                 )}
 
                 <div
@@ -206,7 +230,7 @@ export default function History() {
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px rgba(255,224,0,0.4)" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: theme.accent, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 16px ${theme.glow}` }}>
                     <Play size={20} fill="#000" color="#000" />
                   </div>
                 </div>
@@ -236,20 +260,19 @@ export default function History() {
                   <div style={{ display: "flex", gap: "0.6rem", fontSize: "0.75rem", color: "#888", marginBottom: "1rem", alignItems: "center" }}>
                     <span>{timeAgo(task.created_at)}</span>
                     <span>•</span>
-                    {task.source_type === "studio" ? (
-                      <span style={{ background: "rgba(168,85,247,0.2)", color: "#c084fc", padding: "0.15rem 0.5rem", borderRadius: "6px", fontWeight: 800, fontSize: "0.7rem" }}>Faceless AI</span>
-                    ) : (
-                      <span style={{ background: "rgba(59,130,246,0.2)", color: "#60a5fa", padding: "0.15rem 0.5rem", borderRadius: "6px", fontWeight: 800, fontSize: "0.7rem" }}>Clip</span>
-                    )}
+                    <span style={{ background: theme.soft, color: theme.accent, padding: "0.15rem 0.5rem", borderRadius: "6px", fontWeight: 800, fontSize: "0.7rem" }}>{theme.label}</span>
                     <span>•</span>
-                    <span style={{ color: "var(--accent)", fontWeight: 700 }}>{task.clips_count} clips</span>
+                    <span style={{ color: theme.accent, fontWeight: 700 }}>{task.clips_count} {task.clips_count === 1 ? "clip" : "clips"}</span>
                   </div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "0.75rem" }}>
                   <Link
-                    to={`/task/${task.id}`}
-                    onClick={(e) => e.stopPropagation()}
+                     to={`/task/${task.id}`}
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       sessionStorage.setItem("nova_last_task_type", task.source_type === "studio" ? "studio" : task.source_type === "agentic" ? "agentic" : "clipper");
+                     }}
                     className="btn btn-secondary btn-sm"
                     style={{ fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem" }}
                   >
@@ -267,7 +290,8 @@ export default function History() {
                 </div>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -302,7 +326,7 @@ export default function History() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
                 <div>
                   <h2 style={{ fontSize: "1.1rem", fontWeight: 700, margin: 0, color: "#fff" }}>{selectedTask.title}</h2>
-                  <span style={{ fontSize: "0.78rem", color: "var(--accent)" }}>{selectedTask.clips.length} Clips Generated</span>
+                  <span style={{ fontSize: "0.78rem", color: selectedAccent }}>{selectedTask.clips.length} Clips Generated</span>
                 </div>
                 <button className="btn btn-ghost btn-icon" onClick={() => setSelectedTask(null)}><X size={18} /></button>
               </div>
@@ -320,7 +344,7 @@ export default function History() {
                           <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#fff", marginBottom: "0.3rem" }}>{clip.hook_title || clip.filename}</div>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "#aaa" }}>
                             <span>{clip.duration.toFixed(1)}s</span>
-                            <span style={{ color: "var(--accent)", fontWeight: 700 }}>Score: {clip.virality_score}</span>
+                            <span style={{ color: selectedAccent, fontWeight: 700 }}>Score: {clip.virality_score}</span>
                           </div>
                         </div>
                       </div>
