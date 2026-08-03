@@ -4,14 +4,15 @@
 
 # **NovaClip**
 
-### **AI-Powered Viral Video Clip Generator & Faceless AI Creator Engine**
+### **AI-Powered Clipper, Agentic Video Editor, and Faceless AI Creator**
 
-Turn long podcasts, YouTube videos, and live streams into high-converting vertical short clips — OR generate complete faceless AI videos from scripts/topics with automated stock media scraping, multi-provider neural voiceovers, custom typography, brand watermarks, and multi-color animated karaoke captions.
+Turn long podcasts, YouTube videos, and live streams into high-converting clips, transform one or more raw footage files into a human-approved agentic edit, or generate complete faceless AI videos from scripts and topics.
 
 [![Rust](https://img.shields.io/badge/Rust-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Axum](https://img.shields.io/badge/Axum-000000?style=for-the-badge&logo=rust&logoColor=orange)](https://github.com/tokio-rs/axum)
 [![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python_3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Gemini AI](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter_Free_Models-6566F1?style=for-the-badge&logo=openai&logoColor=white)](https://openrouter.ai/)
@@ -26,7 +27,9 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 
 ## Features
 
-- **Nova Studio — Faceless AI Creator**: Generate complete faceless videos from scratch. Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
+- **Nova Clipper - Viral Clip Generator**: Find high-potential moments in uploaded videos, YouTube content, podcasts, and streams. Transcribe speech, score candidate segments, crop for multiple aspect ratios, burn animated captions, and export individual clips or ZIP packages.
+- **Nova Edit - Agentic Video Editor**: Upload one or multiple raw footage files and provide a creative brief. A Director agent analyzes scene boundaries and word-level transcripts, proposes an ordered EditPlan with exact trims and optional text overlays, waits for human approval, then an Editor renders the cut and a Reviewer scores the result. Request a new plan or re-edit using natural-language feedback.
+- **Nova Studio - Faceless AI Creator**: Generate complete faceless videos from scratch. Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
 - **AI Brains (Gemini 3.1 Flash-Lite & OpenRouter)**: Script generation and virality analysis powered by Gemini 3.1 Flash-Lite (Default), Gemini 3.1 Pro, or OpenRouter free models (`openrouter/free` auto router, `google/gemma-4-31b:free`, `nvidia/nemotron-3-nano-30b-a3b:free`, `openai/gpt-oss-20b:free`, `meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free`). Topic-to-script generation targets exact word count for selected duration.
 - **Multi-Source Stock Media Scrapers**: Automated HD video and photo scraping with multi-platform fallback across **Pinterest Video & Photo Scraper** (Playwright + yt-dlp), **Pexels API**, and **Pixabay API**.
 - **Multi-Provider Neural Voiceovers (TTS) with Duration Sync**: Choose between **Microsoft Edge-TTS** (free, 10+ languages, estimated word timestamps), **ElevenLabs API** (native /with-timestamps endpoint for character-level alignment), or **Deepgram Aura TTS** + Deepgram STT (model nova-2) for precise word timing. Final video uses `-shortest` to ensure audio and video always end together.
@@ -49,6 +52,41 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 
 ---
 
+## Nova Edit Agentic Workflow
+
+Nova Edit is designed for creators, marketers, agencies, and small businesses that already have footage but want to reduce repetitive timeline work while retaining editorial control.
+
+### What Nova Edit Can Do
+
+- Accept one video or combine multiple A-roll, B-roll, interview, testimonial, product, and multi-camera files.
+- Detect scene changes with FFmpeg and build a reusable footage index.
+- Transcribe speech with word-level timestamps through the configured STT provider.
+- Select relevant shots across all uploaded files and avoid cutting spoken words in half.
+- Propose exact shot order, relative trim points, segment duration, and optional text overlays.
+- Pause at an `awaiting_approval` stage before rendering anything.
+- Accept human feedback such as "remove the slow introduction" or "use more product shots" and generate a revised plan.
+- Render `9:16`, `1:1`, `16:9`, or `4:3` output with deterministic FFmpeg processing.
+- Support short-form targets from 20 to 90 seconds and long-form targets from 2 to 60 minutes.
+- Score adherence, pacing, visual quality, watchability, and overall editorial quality.
+- Automatically retry edits below the selected review threshold, up to the configured retry limit.
+- Save completed Nova Edit jobs in History with dedicated cyan styling and filtering.
+
+### Agent Sequence
+
+1. **Ingest & Analyze**: Upload footage, detect scene boundaries, transcribe audio, and create a packed shot-level footage index.
+2. **Director Plans**: Use Gemini or OpenRouter to convert the creative brief and footage index into a structured EditPlan.
+3. **Your Approval**: Inspect the Director's rationale, selected shots, trim points, ordering, and overlays. Approve the plan or request a revision.
+4. **Editor Renders**: Extract selected segments, normalize them to the chosen aspect ratio, and concatenate them into `final_video.mp4`.
+5. **Reviewer Scores**: Evaluate the edit against the brief and retry with actionable feedback when its score is below the configured threshold.
+
+Short-form planning emphasizes hooks, concise pacing, and payoff. Long-form planning uses more shots, longer context-preserving segments, section-like structure, continuity, and a complete conclusion.
+
+### Current Scope
+
+Nova Edit currently focuses on intelligent footage selection, transcript-aware trimming, ordering, approval, rendering, and feedback-driven revisions. It is not yet a replacement for a full nonlinear editor and does not currently provide advanced transitions, keyframed motion graphics, color grading, automatic music selection, or detailed audio mixing.
+
+---
+
 ## Technology Stack
 
 | Layer | Technologies & Tools |
@@ -57,7 +95,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting vertic
 | **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC In-Process Async Queue, Playwright Chromium (Pinterest scraper) |
 | **Subject Tracking** | Python 3.11, Ultralytics YOLO11n-seg, MediaPipe Face/Pose, OpenCV, SceneDetect |
 | **Speech AI / STT / TTS** | Deepgram Nova-3 STT, Vosk Local STT, Whisper Local (ggml-base.bin), ElevenLabs with-timestamps API, Edge-TTS, Deepgram Aura TTS |
-| **Analysis & LLM AI** | Google Gemini AI Virality Analysis, Caption Translation, Edit Reasoning |
+| **Analysis & LLM AI** | Google Gemini and OpenRouter for virality analysis, caption translation, script generation, Nova Edit planning, and editorial review |
 | **Frontend UI** | React 19, TypeScript, Vite 6, Framer Motion, Lucide Icons |
 | **DevOps & Packaging** | Docker, Docker Compose, Nginx, Makefile |
 
@@ -130,6 +168,7 @@ NovaClip is engineered as a zero-vendor-lockin application. Configure your API k
 
 - **Google Gemini API Key**: [Get Key at Google AI Studio](https://ai.google.dev)
 - **Deepgram API Key**: [Get Key at Deepgram Console](https://console.deepgram.com)
+- **OpenRouter API Key**: [Get Key at OpenRouter](https://openrouter.ai/keys)
 
 ---
 
@@ -143,7 +182,7 @@ NovaClip/
 │   │   │   └── src/routes/ (tasks, ai_edit, media, etc.)
 │   │   ├── db/           # SQLite database models & SQLx queries
 │   │   └── worker/       # Video processing pipeline
-│   │       └── src/pipeline/ (clip, caption, reframe, originality, translate, tts, scraper, studio_llm, ...)
+│   │       └── src/pipeline/ (nova_edit, clip, caption, reframe, originality, translate, tts, scraper, studio_llm, ...)
 │   ├── novaclip_reframe/ # Python package for AI vertical reframe (YOLO + MediaPipe)
 │   │   ├── novaclip_reframe/
 │   │   │   └── auto_reframe.py  # Core subject-tracking engine
@@ -153,7 +192,7 @@ NovaClip/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/   # Reusable UI components (Nav, SettingsModal)
-│   │   ├── pages/        # Home, Task, History page views
+│   │   ├── pages/        # Nova Clipper, Nova Edit, Nova Studio, Task, and History views
 │   │   └── lib/          # API client & SSE progress listeners
 │   └── package.json      # Frontend React + Vite dependencies
 ├── docker-compose.yml    # Multi-container orchestration
