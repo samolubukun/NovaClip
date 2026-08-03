@@ -165,4 +165,24 @@ export const api = {
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     return r.json();
   },
+
+  async approveEditPlan(taskId: string, editPlan?: object) {
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/approve-edit-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editPlan ? { edit_plan: editPlan } : {}),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
+
+  async replan(taskId: string, message: string) {
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/replan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
 };
