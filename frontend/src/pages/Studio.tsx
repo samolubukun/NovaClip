@@ -3,16 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Film, Sparkles, Wand2, Sliders, Play, RotateCcw, Upload, Image as ImageIcon,
-  Check, Cpu, Volume2, Globe, Layers, Video, Zap, MessageSquare
+  Check, Cpu, Volume2, Globe, Layers, Video, Zap, MessageSquare, Search
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-
-const ASPECT_RATIOS = [
-  { id: "9:16", label: "9:16 Vertical", sublabel: "TikTok / Shorts / Reels", width: "190px", height: "340px", borderRadius: "24px" },
-  { id: "1:1", label: "1:1 Square", sublabel: "Instagram Post", width: "240px", height: "240px", borderRadius: "16px" },
-  { id: "16:9", label: "16:9 Widescreen", sublabel: "YouTube Video", width: "320px", height: "180px", borderRadius: "14px" },
-];
 
 const LLM_PROVIDERS = [
   { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (Recommended Default)", icon: Sparkles },
@@ -86,8 +80,6 @@ export default function Studio() {
   const [watermarkPosition, setWatermarkPosition] = useState("top_right");
   const [watermarkOpacity, setWatermarkOpacity] = useState(80);
   const watermarkInputRef = useRef<HTMLInputElement>(null);
-
-  const currentMockup = ASPECT_RATIOS.find(ar => ar.id === aspectRatio) || ASPECT_RATIOS[0];
 
   const handleGenerateScriptWithAI = async () => {
     if (!topic.trim()) {
@@ -507,29 +499,53 @@ export default function Studio() {
           </div>
         </motion.div>
 
-        {/* RIGHT COLUMN: Live Mockup */}
+        {/* RIGHT COLUMN: Studio Production Process */}
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }} style={{ position: "sticky", top: "84px" }}>
-          <div style={{ background: "#131318", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "24px", padding: "1.5rem", display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", marginBottom: "1.25rem", alignItems: "center" }}>
+          <div style={{ background: "linear-gradient(180deg, #171322 0%, #0d0b12 100%)", border: "1px solid rgba(139,92,246,0.28)", borderRadius: "24px", padding: "1.5rem", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", marginBottom: "0.5rem", alignItems: "center" }}>
               <span style={{ fontSize: "0.75rem", color: "#8b5cf6", fontWeight: 800, textTransform: "uppercase", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <Sparkles size={14} /> Live Studio Preview
+                <Sparkles size={14} /> How Nova Studio Builds Your Video
               </span>
-              <span style={{ fontSize: "0.68rem", color: "#888", background: "#08080a", padding: "0.2rem 0.6rem", borderRadius: "6px" }}>{aspectRatio}</span>
             </div>
 
-            {/* Device Mockup */}
-            <div style={{ width: "100%", minHeight: "440px", background: "#050507", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div style={{ width: currentMockup.width, height: currentMockup.height, borderRadius: currentMockup.borderRadius, background: "linear-gradient(180deg, #111118 0%, #08080c 100%)", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1rem", border: "2px solid rgba(255,255,255,0.12)" }}>
-                
-                {/* Notch for 9:16 */}
-                {aspectRatio === "9:16" && <div style={{ position: "absolute", top: "8px", width: "60px", height: "12px", background: "#000", borderRadius: "10px" }} />}
+            <p style={{ color: "#aaa", fontSize: "0.78rem", lineHeight: 1.5, margin: "0 0 1.25rem" }}>
+              From an idea to a finished faceless video, each stage prepares the next one automatically.
+            </p>
 
-                {/* Subtitle Preview */}
-                <div style={{ background: "rgba(0,0,0,0.85)", border: "1px solid #8b5cf6", borderRadius: "8px", padding: "0.4rem 0.8rem", color: "#fff", fontSize: "0.75rem", fontWeight: 900, textAlign: "center", maxWidth: "85%" }}>
-                  <span style={{ color: "#8b5cf6" }}>FACELESS AI </span>
-                  <span>VIDEO IN SECONDS 🔥</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem", marginBottom: "1.25rem" }}>
+              {[
+                { number: "01", icon: MessageSquare, title: "Shape the story", text: "Gemini turns your topic into a structured script with the right length and tone." },
+                { number: "02", icon: Volume2, title: "Create the voiceover", text: "Your selected neural voice reads the script as one continuous narration." },
+                { number: "03", icon: Search, title: "Gather supporting visuals", text: "Nova Studio searches your selected stock sources for footage or photos in the chosen vibe." },
+                { number: "04", icon: Layers, title: "Build the visual timeline", text: "Media is trimmed, looped, and sequenced to follow the narration." },
+                { number: "05", icon: Sparkles, title: "Finish captions and branding", text: "Word-level karaoke captions, music, aspect ratio, and watermark are composited." },
+              ].map(({ number, icon: Icon, title, text }) => (
+                <div key={number} style={{ display: "grid", gridTemplateColumns: "34px 1fr", gap: "0.7rem", alignItems: "start", padding: "0.7rem", borderRadius: "12px", background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.14)" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "9px", background: "#8b5cf6", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 900, boxShadow: "0 0 14px rgba(139,92,246,0.3)" }}>
+                    {number}
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "#fff", fontSize: "0.78rem", fontWeight: 800 }}>
+                      <Icon size={14} color="#a78bfa" /> {title}
+                    </div>
+                    <div style={{ color: "#999", fontSize: "0.7rem", lineHeight: 1.45, marginTop: "0.25rem" }}>{text}</div>
+                  </div>
                 </div>
-              </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "1rem" }}>
+              {[
+                ["Output", aspectRatio],
+                ["Duration", `${duration}s`],
+                ["Voice", ttsProvider === "edge-tts" ? "Edge-TTS" : ttsProvider === "elevenlabs" ? "ElevenLabs" : "Deepgram Aura"],
+                ["Visuals", mediaType === "video" ? "HD video" : "Photos"],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: "rgba(0,0,0,0.25)", borderRadius: "8px", padding: "0.55rem 0.65rem" }}>
+                  <div style={{ color: "#777", fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+                  <div style={{ color: "#c4b5fd", fontSize: "0.75rem", fontWeight: 800, marginTop: "0.15rem" }}>{value}</div>
+                </div>
+              ))}
             </div>
           </div>
         </motion.div>
