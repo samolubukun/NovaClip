@@ -1,5 +1,3 @@
-mod pipeline;
-
 use anyhow::Result;
 use novaclip_db::pool::create_pool;
 use tracing::info;
