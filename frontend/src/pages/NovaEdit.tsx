@@ -361,6 +361,30 @@ export default function NovaEdit() {
           </div>
         </motion.div>
       </div>
+
+      {/* Nova Edit Footer */}
+      <section style={{ borderTop: "1px solid rgba(34,211,238,0.18)", background: "#0b0b0e", padding: "2.2rem 0", marginTop: "2.5rem" }}>
+        <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "0 1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "1.5rem", textAlign: "center" }}>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#22d3ee", margin: 0 }}>DIRECTOR</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Plans the story from your footage</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#67e8f9", margin: 0 }}>APPROVE</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>You stay in control of the EditPlan</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#a5f3fc", margin: 0 }}>EDITOR</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Renders precise transcript-aware cuts</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#cffafe", margin: 0 }}>REVIEWER</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Scores and improves every version</p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
