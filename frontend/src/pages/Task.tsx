@@ -58,6 +58,17 @@ interface Task {
     overall?: number;
     feedback?: string;
   };
+  repurpose_result?: {
+    campaign_name?: string;
+    source_title?: string;
+    audience?: string;
+    goal?: string;
+    tone?: string;
+    core_message?: string;
+    cta?: string;
+    platform_copy?: Record<string, Record<string, unknown>>;
+    videos?: { platform: string; filename: string; aspect_ratio: string; duration: number }[];
+  };
 }
 
 interface ReviewBarProps { label: string; value?: number }
@@ -256,6 +267,18 @@ function ClipCard({ clip, taskId, aspectRatio, isSelected, onSelect }: { clip: C
   );
 }
 
+function CopyValue({ label, value }: { label: string; value: unknown }) {
+  const text = Array.isArray(value) ? value.join("\n") : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
+  return <div style={{ background: "#0b0b0e", border: "1px solid rgba(255,255,255,.08)", borderRadius: 9, padding: ".7rem" }}><div style={{ color: "#fb7185", fontSize: ".68rem", fontWeight: 900, textTransform: "uppercase", marginBottom: ".35rem" }}>{label.replace(/_/g, " ")}</div><div style={{ color: "#ccc", whiteSpace: "pre-wrap", fontSize: ".78rem", lineHeight: 1.5 }}>{text}</div><button onClick={() => navigator.clipboard.writeText(text)} style={{ marginTop: ".5rem", background: "none", border: 0, color: "#fb7185", cursor: "pointer", fontSize: ".7rem", fontWeight: 800 }}>Copy</button></div>;
+}
+
+function RepurposeResult({ task, taskId }: { task: Task; taskId: string }) {
+  const stages = ["Source Analysis", "Campaign Strategy", "Video Adaptation", "Platform Copy", "Package Finalization"];
+  if (task.status !== "completed" || !task.repurpose_result) return <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{ background: "linear-gradient(180deg,#181016,#0d0b0e)", border: "1px solid rgba(244,63,94,.3)", borderRadius: 20, padding: "1.75rem", marginBottom: "2rem" }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.3rem" }}><div><h3 style={{ margin: 0, color: "#fff" }}>Building your repurpose campaign</h3><span style={{ color: "#888", fontSize: ".75rem" }}>{task.progress_message}</span></div><strong style={{color:"#fb7185"}}>{task.progress}%</strong></div><div style={{ display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:".5rem" }}>{stages.map((stage,i)=><div key={stage} style={{textAlign:"center"}}><div style={{width:34,height:34,borderRadius:"50%",margin:"0 auto .5rem",background:task.progress >= (i+1)*20?"#f43f5e":"#18181d",display:"grid",placeItems:"center",fontSize:".7rem",fontWeight:900}}>{i+1}</div><span style={{fontSize:".65rem",color:task.progress >= i*20?"#fff":"#666"}}>{stage}</span></div>)}</div><div style={{height:6,background:"#08080a",borderRadius:5,marginTop:"1.2rem",overflow:"hidden"}}><div style={{height:"100%",width:`${task.progress}%`,background:"linear-gradient(90deg,#f43f5e,#fb7185)"}} /></div></motion.div>;
+  const result = task.repurpose_result;
+  return <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} style={{ marginBottom: "2rem" }}><div style={{ background: "linear-gradient(180deg,#181016,#0d0b0e)", border: "1px solid rgba(244,63,94,.3)", borderRadius: 20, padding: "1.6rem", marginBottom: "1rem" }}><div style={{display:"flex",justifyContent:"space-between",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}><div><span style={{color:"#fb7185",fontSize:".7rem",fontWeight:900}}>NOVA REPURPOSE CAMPAIGN</span><h2 style={{margin:".3rem 0",color:"#fff"}}>{result.campaign_name}</h2><p style={{margin:0,color:"#999",fontSize:".8rem"}}>{result.audience} · {result.goal} · {result.tone}</p></div><a href={`/tasks/${taskId}/repurpose-pdf`} download className="btn" style={{background:"#f43f5e",color:"#fff",fontWeight:900}}>Download Campaign PDF</a></div><div style={{marginTop:"1rem",padding:".8rem",borderLeft:"3px solid #f43f5e",background:"rgba(244,63,94,.06)",color:"#ddd",fontSize:".8rem"}}>{result.core_message || "Platform-ready campaign"}{result.cta && <strong style={{display:"block",color:"#fb7185",marginTop:".3rem"}}>CTA: {result.cta}</strong>}</div></div><div style={{display:"grid",gap:"1rem"}}>{Object.entries(result.platform_copy || {}).map(([platform,content])=><section key={platform} style={{background:"#121217",border:"1px solid rgba(255,255,255,.09)",borderRadius:16,padding:"1.2rem"}}><h3 style={{margin:"0 0 .8rem",color:"#fff",textTransform:"capitalize"}}>{platform}</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".7rem"}}>{Object.entries(content || {}).map(([key,value])=><CopyValue key={key} label={key} value={value} />)}</div></section>)}</div></motion.div>;
+}
+
 export default function TaskPage() {
   const { id } = useParams<{ id: string }>();
   const [task, setTask] = useState<Task | null>(null);
@@ -288,6 +311,8 @@ export default function TaskPage() {
           sessionStorage.setItem("nova_last_task_type", "studio");
         } else if (t.source_type === "agentic" || t.source_url?.startsWith("novaedit://")) {
           sessionStorage.setItem("nova_last_task_type", "agentic");
+        } else if (t.source_type === "repurpose" || t.source_url?.startsWith("repurpose://")) {
+          sessionStorage.setItem("nova_last_task_type", "repurpose");
         } else {
           sessionStorage.setItem("nova_last_task_type", "clipper");
         }
@@ -311,7 +336,10 @@ export default function TaskPage() {
         if (!mounted) return;
         setProgress(e.percent);
         setMessage(e.message);
-        setStatus(e.status);
+         setStatus(e.status);
+         if (e.status === "completed") {
+           api.getTask(id).then(fresh => { if (mounted) setTask(fresh); }).catch(() => {});
+         }
       },
       (_e) => {
         if (mounted) loadTask();
@@ -356,6 +384,7 @@ export default function TaskPage() {
   };
 
   const isAgentic = task?.source_type === "agentic" || task?.source_url?.startsWith("novaedit://");
+  const isRepurpose = task?.source_type === "repurpose" || task?.source_url?.startsWith("repurpose://");
 
   const handleApprovePlan = async () => {
     if (!id) return;
@@ -413,6 +442,8 @@ export default function TaskPage() {
                 <span style={{ marginLeft: "0.5rem", fontSize: "0.68rem", fontWeight: 900, padding: "0.15rem 0.55rem", borderRadius: "999px", background: "rgba(34,211,238,0.15)", color: "#22d3ee", border: "1px solid rgba(34,211,238,0.3)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   Agentic AI
                 </span>
+              ) : isRepurpose ? (
+                <span style={{ marginLeft: "0.5rem", fontSize: "0.68rem", fontWeight: 900, padding: "0.15rem 0.55rem", borderRadius: "999px", background: "rgba(244,63,94,0.15)", color: "#fb7185", border: "1px solid rgba(244,63,94,0.3)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Repurpose</span>
               ) : (
                 <span style={{ marginLeft: "0.5rem", fontSize: "0.68rem", fontWeight: 900, padding: "0.15rem 0.55rem", borderRadius: "999px", background: "rgba(255,224,0,0.15)", color: "var(--accent)", border: "1px solid rgba(255,224,0,0.25)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   Clip
@@ -443,6 +474,9 @@ export default function TaskPage() {
           </div>
         ) : status !== "completed" && status !== "error" && task && (() => {
           const isStudio = task.source_url?.startsWith("studio://") || task.source_type === "studio";
+          if (isRepurpose) {
+            return <RepurposeResult task={task} taskId={id!} />;
+          }
           const accent = isAgentic ? "rgba(34,211,238,1)" : isStudio ? "#8b5cf6" : "var(--accent)";
           const accentSoft = isAgentic ? "rgba(34,211,238,0.15)" : isStudio ? "rgba(139,92,246,0.15)" : "rgba(255, 224, 0, 0.15)";
           const PIPELINE_STAGES = isStudio ? [
@@ -535,6 +569,10 @@ export default function TaskPage() {
             </motion.div>
           );
         })()}
+
+        {!loading && isRepurpose && status === "completed" && task && (
+          <RepurposeResult task={task} taskId={id!} />
+        )}
 
         {/* NovaEdit: Edit Plan Approval Gate */}
         {isAgentic && status === "awaiting_approval" && task?.edit_plan && (

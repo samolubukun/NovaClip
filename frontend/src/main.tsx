@@ -9,6 +9,7 @@ import Studio from "./pages/Studio";
 import NovaEdit from "./pages/NovaEdit";
 import TaskPage from "./pages/Task";
 import History from "./pages/History";
+import Repurpose from "./pages/Repurpose";
 
 const INTERNAL_ROUTE_KEY = "novaclip_internal_route";
 
@@ -40,6 +41,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/" element={<Home />} />
         <Route path="/studio" element={<Studio />} />
         <Route path="/novaedit" element={<NovaEdit />} />
+        <Route path="/repurpose" element={<Repurpose />} />
         <Route path="/task/:id" element={<TaskPage />} />
         <Route path="/history" element={<History />} />
       </Routes>

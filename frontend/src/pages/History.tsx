@@ -42,7 +42,7 @@ export default function History() {
   const [firstClipMap, setFirstClipMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "studio" | "novaedit" | "clipper">("all");
+  const [filter, setFilter] = useState<"all" | "studio" | "novaedit" | "repurpose" | "clipper">("all");
   const [selectedTask, setSelectedTask] = useState<{ id: string; title: string; sourceType: string; clips: Clip[] } | null>(null);
 
   useEffect(() => {
@@ -92,7 +92,8 @@ export default function History() {
   const filteredTasks = tasks.filter(t => {
     if (filter === "studio" && t.source_type !== "studio") return false;
     if (filter === "novaedit" && t.source_type !== "agentic") return false;
-    if (filter === "clipper" && (t.source_type === "studio" || t.source_type === "agentic")) return false;
+    if (filter === "repurpose" && t.source_type !== "repurpose") return false;
+    if (filter === "clipper" && (t.source_type === "studio" || t.source_type === "agentic" || t.source_type === "repurpose")) return false;
     return (
       (t.source_title || t.source_url).toLowerCase().includes(search.toLowerCase()) ||
       t.id.toLowerCase().includes(search.toLowerCase())
@@ -102,6 +103,8 @@ export default function History() {
     ? "#8b5cf6"
     : selectedTask?.sourceType === "agentic"
       ? "#22d3ee"
+      : selectedTask?.sourceType === "repurpose"
+        ? "#f43f5e"
       : "var(--accent)";
 
   return (
@@ -141,11 +144,13 @@ export default function History() {
 
         {/* Filter Tabs */}
         <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
-          {(["all", "clipper", "novaedit", "studio"] as const).map(f => {
+          {(["all", "clipper", "studio", "novaedit", "repurpose"] as const).map(f => {
             const colors = f === "clipper"
               ? { background: "var(--accent)", color: "#000" }
               : f === "novaedit"
                 ? { background: "#22d3ee", color: "#001014" }
+                : f === "repurpose"
+                  ? { background: "#f43f5e", color: "#fff" }
                 : f === "studio"
                   ? { background: "#8b5cf6", color: "#fff" }
                   : { background: "#fff", color: "#000" };
@@ -164,7 +169,7 @@ export default function History() {
                 color: filter === f ? colors.color : "#aaa",
               }}
             >
-              {f === "all" ? "All" : f === "clipper" ? "Nova Clipper" : f === "novaedit" ? "Nova Edit" : "Nova Studio"}
+              {f === "all" ? "All" : f === "clipper" ? "Nova Clipper" : f === "novaedit" ? "Nova Edit" : f === "repurpose" ? "Nova Repurpose" : "Nova Studio"}
             </button>
             );
           })}
@@ -191,6 +196,8 @@ export default function History() {
               ? { accent: "#8b5cf6", soft: "rgba(139,92,246,0.18)", glow: "rgba(139,92,246,0.35)", label: "Faceless AI" }
               : task.source_type === "agentic"
                 ? { accent: "#22d3ee", soft: "rgba(34,211,238,0.16)", glow: "rgba(34,211,238,0.35)", label: "Nova Edit" }
+                : task.source_type === "repurpose"
+                  ? { accent: "#f43f5e", soft: "rgba(244,63,94,0.16)", glow: "rgba(244,63,94,0.35)", label: "Nova Repurpose" }
                 : { accent: "var(--accent)", soft: "rgba(255,224,0,0.14)", glow: "rgba(255,224,0,0.35)", label: "Clip" };
             return (
             <motion.div
@@ -271,7 +278,7 @@ export default function History() {
                      to={`/task/${task.id}`}
                      onClick={(e) => {
                        e.stopPropagation();
-                       sessionStorage.setItem("nova_last_task_type", task.source_type === "studio" ? "studio" : task.source_type === "agentic" ? "agentic" : "clipper");
+                       sessionStorage.setItem("nova_last_task_type", task.source_type === "studio" ? "studio" : task.source_type === "agentic" ? "agentic" : task.source_type === "repurpose" ? "repurpose" : "clipper");
                      }}
                     className="btn btn-secondary btn-sm"
                     style={{ fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem" }}
