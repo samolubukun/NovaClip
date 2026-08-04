@@ -4,6 +4,7 @@ import { Link2, Upload, Zap, Sparkles, Smartphone, Square, Monitor, Film, Plus, 
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
+import { GEMINI_MODELS, OPENROUTER_MODELS, type LlmProvider } from "@/lib/llmModels";
 
 const ASPECT_RATIOS = [
   { id: "9:16", label: "9:16", sublabel: "Vertical 9:16", Icon: Smartphone },
@@ -74,6 +75,9 @@ export default function Home() {
   const [customSaturation, setCustomSaturation] = useState(1.10);
   const [translateLanguage, setTranslateLanguage] = useState("");
   const [sttProvider, setSttProvider] = useState("deepgram");
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("gemini");
+  const [llmModel, setLlmModel] = useState("gemini-3.1-flash-lite");
+  const [customLlmModel, setCustomLlmModel] = useState("");
   const [loading, setLoading] = useState(false);
   const [inputMode, setInputMode] = useState<"form" | "ai">("form");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -152,6 +156,7 @@ export default function Home() {
           : originalityBoost,
         translate_language: translateLanguage,
         stt_provider: sttProvider,
+        llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
       });
 
       if (watermarkFile) {
@@ -998,6 +1003,42 @@ export default function Home() {
                       <option value="vosk">Vosk Local (Fast Offline)</option>
                       <option value="whisper">Whisper Local (Base Offline)</option>
                     </select>
+
+                    <div style={{ width: "1px", height: "20px", background: "rgba(255,255,255,0.1)" }} />
+
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", color: "#ddd", fontWeight: 600 }}>
+                      <Cpu size={14} /> AI Model
+                    </label>
+                    <select
+                      value={llmProvider}
+                      onChange={e => {
+                        const provider = e.target.value as LlmProvider;
+                        setLlmProvider(provider);
+                        setLlmModel(provider === "gemini" ? "gemini-3.1-flash-lite" : "openrouter/free");
+                      }}
+                      style={{
+                        maxWidth: "260px", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: "8px", padding: "0.3rem 0.5rem", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer",
+                      }}
+                    >
+                      <option value="gemini">Gemini</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                    <select
+                      value={llmModel}
+                      onChange={e => setLlmModel(e.target.value)}
+                      style={{ maxWidth: "230px", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.3rem 0.5rem", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      {(llmProvider === "gemini" ? GEMINI_MODELS : OPENROUTER_MODELS).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                    {llmProvider === "openrouter" && llmModel === "custom" && (
+                      <input
+                        value={customLlmModel}
+                        onChange={e => setCustomLlmModel(e.target.value)}
+                        placeholder="provider/model-id"
+                        style={{ maxWidth: "190px", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.3rem 0.5rem", fontSize: "0.78rem" }}
+                      />
+                    )}
                   </div>
 
                   {/* Submit Button */}
