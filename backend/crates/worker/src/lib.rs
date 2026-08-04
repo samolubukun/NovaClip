@@ -133,9 +133,13 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
             .unwrap_or_else(|| std::env::var("GEMINI_API_KEY").unwrap_or_default()),
         gemini_model: std::env::var("GEMINI_MODEL")
             .unwrap_or_else(|_| "gemini-3.1-flash-lite".into()),
+        llm_provider: task.llm_provider.clone(),
         deepgram_api_key: task.deepgram_api_key
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| std::env::var("DEEPGRAM_API_KEY").unwrap_or_default()),
+        openrouter_api_key: task.openrouter_api_key
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| std::env::var("OPENROUTER_API_KEY").unwrap_or_default()),
         stt_provider: if task.stt_provider.trim().is_empty() {
             std::env::var("STT_PROVIDER").unwrap_or_else(|_| "deepgram".into())
         } else {
@@ -263,8 +267,9 @@ async fn process_standard_task(
     let analysis = analyze_transcript(
         &transcript_text,
         cfg.num_clips,
-        &cfg.gemini_model,
+        &cfg.llm_provider,
         &cfg.gemini_api_key,
+        &cfg.openrouter_api_key,
     )
     .await?;
 
