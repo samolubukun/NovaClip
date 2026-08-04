@@ -154,7 +154,9 @@ struct CreateTaskRequest {
     remove_filler_words: Option<bool>,
     filtered_words: Option<Vec<String>>,
     gemini_api_key: Option<String>,
+    llm_provider: Option<String>,
     deepgram_api_key: Option<String>,
+    openrouter_api_key: Option<String>,
     stt_provider: Option<String>,
     auto_vertical_reframe: Option<bool>,
     reframe_preset: Option<String>,
@@ -260,12 +262,12 @@ async fn create_task(
            (id, source_url, source_title, source_type, aspect_ratio, num_clips, font_family, font_size,
             font_color, caption_template, add_subtitles, include_broll, processing_mode,
             cut_long_pauses, pause_threshold_ms, remove_filler_words, filtered_words,
-            gemini_api_key, deepgram_api_key, stt_provider, auto_vertical_reframe, reframe_preset,
+             gemini_api_key, deepgram_api_key, openrouter_api_key, stt_provider, auto_vertical_reframe, reframe_preset,
             reframe_frame_skip, reframe_layout, speaker_active_switch, split_divider,
             originality_boost, translate_language, giphy_api_key,
             studio_payload, highlight_color, caption_animation, auto_emojis,
-            watermark_position, watermark_opacity, novaedit_payload)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+             watermark_position, watermark_opacity, novaedit_payload, llm_provider)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
@@ -286,6 +288,7 @@ async fn create_task(
     .bind(&filtered_words_json)
     .bind(req.gemini_api_key)
     .bind(req.deepgram_api_key)
+    .bind(req.openrouter_api_key)
     .bind(&stt_provider)
     .bind(auto_vertical_reframe)
     .bind(&reframe_preset)
@@ -303,6 +306,7 @@ async fn create_task(
     .bind(&watermark_position)
     .bind(watermark_opacity)
     .bind(novaedit_payload_json)
+    .bind(req.llm_provider.as_deref().unwrap_or("gemini-3.1-flash-lite"))
     .execute(&state.db)
     .await
     .map_err(|e| {
