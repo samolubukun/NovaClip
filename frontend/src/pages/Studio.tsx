@@ -3,25 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Film, Sparkles, Wand2, Sliders, Play, RotateCcw, Upload, Image as ImageIcon,
-  Check, Cpu, Volume2, Globe, Layers, Video, Zap, MessageSquare, Search
+  Check, Volume2, Globe, Layers, Video, Zap, MessageSquare, Search
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-
-const LLM_PROVIDERS = [
-  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (Recommended Default)", icon: Sparkles },
-  { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro (Deep Reasoning)", icon: Sparkles },
-  { id: "openrouter/free", label: "OpenRouter: Free Models Router (Auto-Select)", icon: Cpu },
-  { id: "nvidia/nemotron-3-nano-30b-a3b:free", label: "OpenRouter: Nvidia Nemotron 3 Nano (:free)", icon: Cpu },
-  { id: "google/gemma-4-31b:free", label: "OpenRouter: Google Gemma 4 31B (:free)", icon: Cpu },
-  { id: "openai/gpt-oss-20b:free", label: "OpenRouter: OpenAI GPT-OSS 20B (:free)", icon: Cpu },
-  { id: "poolside/laguna-s-2.1:free", label: "OpenRouter: Poolside Laguna S 2.1 (:free)", icon: Cpu },
-  { id: "cohere/north-mini-code-20260617:free", label: "OpenRouter: Cohere North Mini Code (:free)", icon: Cpu },
-  { id: "meta-llama/llama-3.3-70b-instruct:free", label: "OpenRouter: Llama 3.3 70B (:free)", icon: Cpu },
-  { id: "deepseek/deepseek-r1:free", label: "OpenRouter: DeepSeek R1 (:free)", icon: Cpu },
-  { id: "qwen/qwen-2.5-72b-instruct:free", label: "OpenRouter: Qwen 2.5 72B (:free)", icon: Cpu },
-  { id: "custom", label: "OpenRouter: Custom Specified Model", icon: Cpu },
-];
+import { GEMINI_MODELS, OPENROUTER_MODELS, type LlmProvider } from "../lib/llmModels";
 
 const TTS_PROVIDERS = [
   { id: "edge-tts", label: "Edge-TTS (Free Neural Voices)", desc: "10+ Languages, Zero API cost" },
@@ -60,7 +46,8 @@ export default function Studio() {
   const [scriptStatus, setScriptStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [scriptError, setScriptError] = useState("");
   const [aspectRatio, setAspectRatio] = useState("9:16");
-  const [llmProvider, setLlmProvider] = useState("gemini-3.1-flash-lite");
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("gemini");
+  const [llmModel, setLlmModel] = useState("gemini-3.1-flash-lite");
   const [customLlmModel, setCustomLlmModel] = useState("");
   const [ttsProvider, setTtsProvider] = useState("edge-tts");
   const [voiceName, setVoiceName] = useState("en-US-ChristopherNeural");
@@ -98,7 +85,7 @@ export default function Studio() {
           topic: topic.trim(),
           vibe,
           duration: Number(duration),
-          llm_provider: llmProvider === "custom" ? customLlmModel : llmProvider,
+         llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
           api_key: apiKey,
         }),
       });
@@ -126,7 +113,7 @@ export default function Studio() {
       const payload = {
         script: script.trim(),
         aspect_ratio: aspectRatio,
-        llm_provider: llmProvider === "custom" ? customLlmModel : llmProvider,
+        llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
         tts_provider: ttsProvider,
         voice: ttsProvider === "elevenlabs" ? elevenVoiceId : ttsProvider === "deepgram-aura" ? deepgramVoice : voiceName,
         duration: Number(duration),
@@ -150,6 +137,7 @@ export default function Studio() {
         source_title: videoTitle,
         aspect_ratio: aspectRatio,
         num_clips: 1,
+        llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
         font_family: "THEBOLDFONT",
         font_size: 28,
         font_color: "#ffffff",
@@ -285,14 +273,16 @@ export default function Studio() {
                 <label style={{ display: "block", fontSize: "0.78rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>AI Brain / LLM Engine</label>
                 <select
                   value={llmProvider}
-                  onChange={e => setLlmProvider(e.target.value)}
+                  onChange={e => { const provider = e.target.value as LlmProvider; setLlmProvider(provider); setLlmModel(provider === "gemini" ? "gemini-3.1-flash-lite" : "openrouter/free"); }}
                   style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "10px", padding: "0.55rem 0.75rem", fontSize: "0.82rem", fontWeight: 600 }}
                 >
-                  {LLM_PROVIDERS.map(p => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
-                  ))}
+                  <option value="gemini">Gemini</option>
+                  <option value="openrouter">OpenRouter</option>
                 </select>
-                {llmProvider === "custom" && (
+                <select value={llmModel} onChange={e => setLlmModel(e.target.value)} style={{ width: "100%", marginTop: "0.4rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.76rem", fontWeight: 600 }}>
+                  {(llmProvider === "gemini" ? GEMINI_MODELS : OPENROUTER_MODELS).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+                {llmProvider === "openrouter" && llmModel === "custom" && (
                   <input
                     type="text"
                     placeholder="e.g., anthropic/claude-3.5-sonnet"
