@@ -4,11 +4,13 @@ export const api = {
   async createTask(payload: object) {
     const geminiKey = localStorage.getItem("novaclip_gemini_key");
     const deepgramKey = localStorage.getItem("novaclip_deepgram_key");
+    const openrouterKey = localStorage.getItem("novaclip_openrouter_key");
 
     const fullPayload = {
       ...payload,
       ...(geminiKey ? { gemini_api_key: geminiKey } : {}),
       ...(deepgramKey ? { deepgram_api_key: deepgramKey } : {}),
+      ...(openrouterKey ? { openrouter_api_key: openrouterKey } : {}),
     };
 
     const r = await fetch(`${API_BASE}/tasks`, {
