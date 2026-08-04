@@ -63,6 +63,8 @@ async fn main() -> anyhow::Result<()> {
         novaedit_payload: None,
         edit_plan: None,
         review_score: None,
+        repurpose_payload: None,
+        repurpose_result: None,
     };
 
     let whisper_model = PathBuf::from(&cfg.whisper_model_path);

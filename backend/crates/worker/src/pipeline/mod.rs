@@ -12,6 +12,7 @@ pub mod studio_llm;
 pub mod tts;
 pub mod scraper;
 pub mod nova_edit;
+pub mod repurpose;
 
 use serde::{Deserialize, Serialize};
 
@@ -95,4 +96,6 @@ pub struct PipelineConfig {
     pub novaedit_payload: Option<serde_json::Value>,
     pub edit_plan: Option<serde_json::Value>,
     pub review_score: Option<serde_json::Value>,
+    pub repurpose_payload: Option<serde_json::Value>,
+    pub repurpose_result: Option<serde_json::Value>,
 }
