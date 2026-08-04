@@ -2,19 +2,11 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Wand2, Sparkles, Upload, Film, Check, X, Cpu, Target, MessageSquare, Sliders, Video, Zap, Repeat, Monitor
+  Wand2, Sparkles, Upload, Film, Check, X, Target, MessageSquare, Sliders, Video, Zap, Repeat, Monitor
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-
-const LLM_PROVIDERS = [
-  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (Recommended Default)", icon: Sparkles },
-  { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro (Deep Reasoning)", icon: Sparkles },
-  { id: "openrouter/free", label: "OpenRouter: Free Models Router (Auto-Select)", icon: Cpu },
-  { id: "google/gemma-4-31b:free", label: "OpenRouter: Google Gemma 4 31B (:free)", icon: Cpu },
-  { id: "deepseek/deepseek-r1:free", label: "OpenRouter: DeepSeek R1 (:free)", icon: Cpu },
-  { id: "custom", label: "OpenRouter: Custom Specified Model", icon: Cpu },
-];
+import { GEMINI_MODELS, OPENROUTER_VISION_MODEL_OPTIONS, OPENROUTER_VISION_MODELS, type LlmProvider } from "../lib/llmModels";
 
 const TONES = [
   "authentic", "energetic", "calm", "professional", "funny", "inspirational", "edgy", "corporate",
@@ -36,12 +28,13 @@ export default function NovaEdit() {
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [instruction, setInstruction] = useState("");
 
-  const [llmProvider, setLlmProvider] = useState("gemini-3.1-flash-lite");
-  const [customLlmModel, setCustomLlmModel] = useState("");
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("gemini");
+  const [llmModel, setLlmModel] = useState("gemini-3.1-flash-lite");
   const [reviewThreshold, setReviewThreshold] = useState(0.6);
   const [maxRetries, setMaxRetries] = useState(2);
 
   const [loading, setLoading] = useState(false);
+  const isVisionModel = llmProvider === "gemini" || OPENROUTER_VISION_MODELS.has(llmModel);
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
@@ -105,7 +98,8 @@ export default function NovaEdit() {
           openrouter_key: localStorage.getItem("novaclip_openrouter_key") || "",
           deepgram_key: localStorage.getItem("novaclip_deepgram_key") || "",
         },
-        llm_provider: llmProvider === "custom" ? customLlmModel : llmProvider,
+         llm_provider: llmModel,
+         visual_analysis: isVisionModel,
         stage: "director",
         retries_used: 0,
         max_retries: maxRetries,
@@ -118,6 +112,7 @@ export default function NovaEdit() {
         source_title: title,
         aspect_ratio: aspectRatio,
         num_clips: 1,
+        llm_provider: llmModel,
         novaedit_payload: payload,
       });
 
@@ -268,12 +263,13 @@ export default function NovaEdit() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1.25rem" }}>
               <div>
                 <label style={{ display: "block", fontSize: "0.78rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>AI Brain / LLM Engine</label>
-                <select value={llmProvider} onChange={e => setLlmProvider(e.target.value)} style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "10px", padding: "0.55rem 0.75rem", fontSize: "0.78rem", fontWeight: 600 }}>
-                  {LLM_PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                <select value={llmProvider} onChange={e => { const provider = e.target.value as LlmProvider; setLlmProvider(provider); setLlmModel(provider === "gemini" ? "gemini-3.1-flash-lite" : OPENROUTER_VISION_MODEL_OPTIONS[0].id); }} style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "10px", padding: "0.55rem 0.75rem", fontSize: "0.78rem", fontWeight: 600 }}>
+                  <option value="gemini">Gemini</option>
+                  <option value="openrouter">OpenRouter</option>
                 </select>
-                {llmProvider === "custom" && (
-                  <input type="text" placeholder="e.g., anthropic/claude-3.5-sonnet" value={customLlmModel} onChange={e => setCustomLlmModel(e.target.value)} style={{ width: "100%", marginTop: "0.4rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }} />
-                )}
+                <select value={llmModel} onChange={e => setLlmModel(e.target.value)} style={{ width: "100%", marginTop: "0.4rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.76rem", fontWeight: 600 }}>
+                  {(llmProvider === "gemini" ? GEMINI_MODELS : OPENROUTER_VISION_MODEL_OPTIONS).map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "0.78rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>Review Threshold</label>
