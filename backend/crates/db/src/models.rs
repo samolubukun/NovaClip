@@ -56,6 +56,10 @@ pub struct Task {
     pub edit_plan: Option<String>,
     /// JSON-encoded NovaEditReview (agentic review scores)
     pub review_score: Option<String>,
+    /// Selected provider/model identifier for transcript and agent analysis
+    pub llm_provider: String,
+    /// Per-task OpenRouter key, when supplied by the frontend
+    pub openrouter_api_key: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
