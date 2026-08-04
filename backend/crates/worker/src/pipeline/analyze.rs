@@ -66,8 +66,9 @@ pub async fn analyze_transcript(
     num_clips: i32,
     model: &str,
     api_key: &str,
+    openrouter_api_key: &str,
 ) -> Result<TranscriptAnalysis> {
-    let openrouter_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
+    let openrouter_key = if openrouter_api_key.trim().is_empty() { std::env::var("OPENROUTER_API_KEY").unwrap_or_default() } else { openrouter_api_key.to_string() };
     let is_openrouter = model.contains('/') || model == "openrouter/free" || api_key.starts_with("sk-or-") || (!openrouter_key.is_empty() && api_key.is_empty());
 
     let target_model = if is_openrouter {
@@ -117,6 +118,7 @@ pub async fn analyze_transcript(
         let resp: Value = response.json().await.context("Failed to parse OpenRouter response")?;
         resp.pointer("/choices/0/message/content")
             .and_then(|v| v.as_str())
+            .or_else(|| resp.pointer("/choices/0/message/reasoning").and_then(|v| v.as_str()))
             .context("No text in OpenRouter response")?
             .to_string()
     } else {
