@@ -28,9 +28,9 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 ## Features
 
 - **Nova Clipper - Viral Clip Generator**: Find high-potential moments in uploaded videos, YouTube content, podcasts, and streams. Transcribe speech, score candidate segments, crop for multiple aspect ratios, burn animated captions, and export individual clips or ZIP packages.
-- **Nova Edit - Agentic Video Editor**: Upload one or multiple raw footage files and provide a creative brief. A Director agent analyzes scene boundaries and word-level transcripts, proposes an ordered EditPlan with exact trims and optional text overlays, waits for human approval, then an Editor renders the cut and a Reviewer scores the result. Request a new plan or re-edit using natural-language feedback.
+- **Nova Edit - Agentic Video Editor**: Upload one or multiple raw footage files and provide a creative brief. Nova Edit combines scene detection, transcript timestamps, and representative-frame vision analysis to build a footage index. A Director proposes an ordered EditPlan with exact trims and optional text overlays, waits for human approval, then an Editor renders the cut and a Reviewer scores the result. Request a new plan or re-edit using natural-language feedback.
 - **Nova Studio - Faceless AI Creator**: Generate complete faceless videos from scratch. Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
-- **AI Brains (Gemini 3.1 Flash-Lite & OpenRouter)**: Script generation and virality analysis powered by Gemini 3.1 Flash-Lite (Default), Gemini 3.1 Pro, or OpenRouter free models (`openrouter/free` auto router, `google/gemma-4-31b:free`, `nvidia/nemotron-3-nano-30b-a3b:free`, `openai/gpt-oss-20b:free`, `meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free`). Topic-to-script generation targets exact word count for selected duration.
+- **Provider-Based AI Model Selection**: Choose Gemini or OpenRouter independently in Nova Clipper, Nova Studio, and Nova Edit. Gemini defaults to Gemini 3.1 Flash-Lite. Clipper and Studio offer the current text-capable OpenRouter choices, while Nova Edit only exposes free multimodal models used for visual footage analysis (`google/gemma-4-26b-a4b-it:free`, `nvidia/nemotron-nano-12b-v2-vl:free`, and `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`).
 - **Multi-Source Stock Media Scrapers**: Automated HD video and photo scraping with multi-platform fallback across **Pinterest Video & Photo Scraper** (Playwright + yt-dlp), **Pexels API**, and **Pixabay API**.
 - **Multi-Provider Neural Voiceovers (TTS) with Duration Sync**: Choose between **Microsoft Edge-TTS** (free, 10+ languages, estimated word timestamps), **ElevenLabs API** (native /with-timestamps endpoint for character-level alignment), or **Deepgram Aura TTS** + Deepgram STT (model nova-2) for precise word timing. Final video uses `-shortest` to ensure audio and video always end together.
 - **AI Virality Scoring**: Gemini AI evaluates hooks, retention probability, emotional peaks, and shareability for every extracted segment.
@@ -61,6 +61,9 @@ Nova Edit is designed for creators, marketers, agencies, and small businesses th
 - Accept one video or combine multiple A-roll, B-roll, interview, testimonial, product, and multi-camera files.
 - Detect scene changes with FFmpeg and build a reusable footage index.
 - Transcribe speech with word-level timestamps through the configured STT provider.
+- Continue in visual-only mode when footage has no usable audio track.
+- Extract representative midpoint frames from detected shots and analyze them in batches of up to 12.
+- Record visual descriptions, shot types, and visual-quality scores alongside transcript metadata.
 - Select relevant shots across all uploaded files and avoid cutting spoken words in half.
 - Propose exact shot order, relative trim points, segment duration, and optional text overlays.
 - Pause at an `awaiting_approval` stage before rendering anything.
@@ -73,7 +76,7 @@ Nova Edit is designed for creators, marketers, agencies, and small businesses th
 
 ### Agent Sequence
 
-1. **Ingest & Analyze**: Upload footage, detect scene boundaries, transcribe audio, and create a packed shot-level footage index.
+1. **Ingest & Analyze**: Upload footage, detect scene boundaries, transcribe audio when available, analyze representative frames with a vision-capable model, and create a packed shot-level footage index.
 2. **Director Plans**: Use Gemini or OpenRouter to convert the creative brief and footage index into a structured EditPlan.
 3. **Your Approval**: Inspect the Director's rationale, selected shots, trim points, ordering, and overlays. Approve the plan or request a revision.
 4. **Editor Renders**: Extract selected segments, normalize them to the chosen aspect ratio, and concatenate them into `final_video.mp4`.
