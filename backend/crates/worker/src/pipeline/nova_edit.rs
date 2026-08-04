@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use base64::Engine;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{info, warn};
@@ -10,7 +11,7 @@ use novaclip_db::DbPool;
 use crate::{check_cancelled, emit_progress};
 use crate::pipeline::crop::output_dimensions;
 use crate::pipeline::download::{extract_audio, get_video_duration, resolve_upload_path};
-use crate::pipeline::transcribe::{transcribe_audio, DeepgramWord};
+use crate::pipeline::transcribe::{transcribe_audio, DeepgramWord, TimestampedTranscript};
 use crate::PipelineConfig;
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,8 @@ pub struct NovaEditPayload {
     pub feedback_history: Vec<String>,
     #[serde(default)]
     pub user_feedback: Option<String>,
+    #[serde(default)]
+    pub visual_analysis: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,6 +126,12 @@ pub struct NovaShot {
     pub words: Vec<DeepgramWord>,
     #[serde(default)]
     pub roll_type: String,
+    #[serde(default)]
+    pub visual_description: String,
+    #[serde(default)]
+    pub visual_quality: f64,
+    #[serde(default)]
+    pub shot_type: String,
 }
 
 const FOOTAGE_INDEX: &str = "footage_index.json";
@@ -333,18 +342,25 @@ async fn preprocess_footage(
         ).await;
         let scenes = detect_scenes(&path).await?;
 
-        let audio = extract_audio(&path, &cfg.temp_dir).await?;
-        let transcript = transcribe_audio(
-            &audio,
-            &cfg.stt_provider,
-            &cfg.deepgram_api_key,
-            Path::new(&cfg.vosk_model_path),
-            Path::new(&cfg.whisper_model_path),
-            Path::new(&cfg.pyannote_segmentation_model_path),
-            Path::new(&cfg.pyannote_embedding_model_path),
-        )
-        .await
-        .context("NovaEdit transcription failed")?;
+        let transcript = match extract_audio(&path, &cfg.temp_dir).await {
+            Ok(audio) => {
+                let result = transcribe_audio(
+                    &audio,
+                    &cfg.stt_provider,
+                    &cfg.deepgram_api_key,
+                    Path::new(&cfg.vosk_model_path),
+                    Path::new(&cfg.whisper_model_path),
+                    Path::new(&cfg.pyannote_segmentation_model_path),
+                    Path::new(&cfg.pyannote_embedding_model_path),
+                ).await;
+                let _ = std::fs::remove_file(&audio);
+                result.unwrap_or(TimestampedTranscript { full_text: String::new(), words: Vec::new(), duration: 0.0 })
+            }
+            Err(err) => {
+                warn!("NovaEdit visual-only footage: audio unavailable for {}: {}", path.display(), err);
+                TimestampedTranscript { full_text: String::new(), words: Vec::new(), duration: 0.0 }
+            }
+        };
 
         for (s, e) in &scenes {
             let s = *s;
@@ -361,10 +377,11 @@ async fn preprocess_footage(
                 transcript: text,
                 words,
                 roll_type: detect_roll_type(&path),
+                visual_description: String::new(),
+                visual_quality: 0.0,
+                shot_type: String::new(),
             });
         }
-
-        let _ = std::fs::remove_file(&audio);
 
         info!("NovaEdit {} — processed clip {}: {} scenes, {} words", task_id_str, i + 1, scenes.len(), transcript.words.len());
         let _ = output_dir; // output_dir reserved for future artifacts
@@ -374,7 +391,92 @@ async fn preprocess_footage(
         anyhow::bail!("No usable footage found for NovaEdit task");
     }
 
+    if payload.visual_analysis {
+        analyze_visual_shots(cfg, output_dir, payload, &mut all_shots).await?;
+    }
+
     Ok(all_shots)
+}
+
+async fn analyze_visual_shots(
+    cfg: &PipelineConfig,
+    output_dir: &Path,
+    payload: &NovaEditPayload,
+    shots: &mut [NovaShot],
+) -> Result<()> {
+    const VISION_MODELS: [&str; 3] = [
+        "google/gemma-4-26b-a4b-it:free",
+        "nvidia/nemotron-nano-12b-v2-vl:free",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    ];
+    let selected = if payload.llm_provider.contains('/') { payload.llm_provider.as_str() } else { cfg.llm_provider.as_str() };
+    let mut providers: Vec<&str> = if VISION_MODELS.contains(&selected) { vec![selected] } else { Vec::new() };
+    providers.extend(VISION_MODELS.iter().copied().filter(|model| *model != selected));
+    let api_key = payload.api_keys.openrouter_key.clone()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("OPENROUTER_API_KEY").ok().filter(|s| !s.trim().is_empty()))
+        .unwrap_or_default();
+    if api_key.is_empty() || providers.is_empty() {
+        warn!("NovaEdit visual analysis skipped: an OpenRouter vision model and key are required");
+        return Ok(());
+    }
+
+    let visual_dir = output_dir.join("visual_frames");
+    tokio::fs::create_dir_all(&visual_dir).await?;
+    for (index, shot) in shots.iter().enumerate() {
+        let frame = visual_dir.join(format!("frame_{index:04}.jpg"));
+        let source = Path::new(&shot.source_file);
+        let midpoint = (shot.start_time + shot.end_time) / 2.0;
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-ss", &format!("{midpoint:.3}"), "-i", source.to_str().unwrap_or_default(), "-frames:v", "1", "-vf", "scale=512:-2", frame.to_str().unwrap_or_default()])
+            .status().await?;
+        if !status.success() { continue; }
+    }
+
+    let batch_size = 12usize;
+    for batch_start in (0..shots.len()).step_by(batch_size) {
+        let batch_end = (batch_start + batch_size).min(shots.len());
+        let mut content = vec![json!({
+            "type": "text",
+            "text": format!("Analyze the numbered video frames. Return strict JSON only in the form {{\"frames\":[{{\"frame_id\":\"shot_0\",\"description\":\"...\",\"shot_type\":\"...\",\"visual_quality\":0.0}}]}}. Do not invent details.")
+        })];
+        for index in batch_start..batch_end {
+            let frame = visual_dir.join(format!("frame_{index:04}.jpg"));
+            if let Ok(bytes) = tokio::fs::read(&frame).await {
+                let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+                content.push(json!({ "type": "text", "text": format!("Frame shot_{index}:" ) }));
+                content.push(json!({ "type": "image_url", "image_url": { "url": format!("data:image/jpeg;base64,{encoded}") } }));
+            }
+        }
+        let mut body: Option<Value> = None;
+        for provider in &providers {
+            let response = reqwest::Client::new().post("https://openrouter.ai/api/v1/chat/completions")
+                .header("Authorization", format!("Bearer {api_key}"))
+                .header("HTTP-Referer", "https://novaclip.app")
+                .header("X-Title", "NovaClip")
+                .json(&json!({ "model": provider, "messages": [{ "role": "user", "content": content }], "temperature": 0.1, "max_tokens": 2000 }))
+                .send().await?;
+            if response.status().is_success() {
+                body = Some(response.json().await?);
+                break;
+            }
+            warn!("NovaEdit visual model {} failed: {}", provider, response.status());
+        }
+        let Some(body) = body else { continue };
+        let text = body.pointer("/choices/0/message/content").and_then(Value::as_str).unwrap_or("{}");
+        let clean = strip_fences(text);
+        let parsed: Value = match serde_json::from_str(&clean) { Ok(value) => value, Err(_) => continue };
+        for item in parsed.get("frames").and_then(Value::as_array).into_iter().flatten() {
+            let Some(id) = item.get("frame_id").and_then(Value::as_str) else { continue };
+            let Ok(index) = id.trim_start_matches("shot_").parse::<usize>() else { continue };
+            if let Some(shot) = shots.get_mut(index) {
+                shot.visual_description = item.get("description").and_then(Value::as_str).unwrap_or_default().to_string();
+                shot.shot_type = item.get("shot_type").and_then(Value::as_str).unwrap_or_default().to_string();
+                shot.visual_quality = item.get("visual_quality").and_then(Value::as_f64).unwrap_or(0.0).clamp(0.0, 1.0);
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn detect_scenes(video: &Path) -> Result<Vec<(f64, f64)>> {
@@ -517,6 +619,9 @@ pub fn pack_transcript(shots: &[NovaShot], brief: &NovaEditBrief) -> String {
         lines.push_str(&format!("{:.2}s → {:.2}s", shot.start_time, shot.end_time));
         lines.push_str("] ");
         lines.push_str(if shot.transcript.trim().is_empty() { "_no speech detected_".into() } else { shot.transcript.trim().into() });
+        if !shot.visual_description.is_empty() {
+            lines.push_str(&format!("\n  Visual: {} (shot type: {}, quality: {:.2})", shot.visual_description, shot.shot_type, shot.visual_quality));
+        }
         lines.push_str("\n\n");
     }
     lines
@@ -888,6 +993,7 @@ async fn call_llm_json(cfg: &PipelineConfig, payload: &NovaEditPayload, system_p
         .unwrap_or_default();
     let openrouter_key = payload.api_keys.openrouter_key.clone()
         .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("OPENROUTER_API_KEY").ok().filter(|s| !s.trim().is_empty()))
         .unwrap_or_default();
 
     let provider = if payload.llm_provider.is_empty() {
