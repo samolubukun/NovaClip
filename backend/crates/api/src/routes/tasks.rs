@@ -38,6 +38,7 @@ pub fn tasks_router() -> Router<AppState> {
         .route("/tasks/ai-prompt/chat", post(ai_chat_handler))
         .route("/tasks/{id}/approve-edit-plan", post(approve_edit_plan))
         .route("/tasks/{id}/replan", post(replan_task))
+        .route("/tasks/{id}/repurpose-pdf", get(repurpose_pdf))
 }
 
 #[derive(Deserialize)]
@@ -172,6 +173,7 @@ struct CreateTaskRequest {
     studio_payload: Option<StudioPayload>,
     /// NovaEdit payload for agentic editing tasks (source_type = "agentic")
     novaedit_payload: Option<serde_json::Value>,
+    repurpose_payload: Option<serde_json::Value>,
     highlight_color: Option<String>,
     caption_animation: Option<String>,
     auto_emojis: Option<bool>,
@@ -206,6 +208,8 @@ async fn create_task(
         "studio"
     } else if url.starts_with("novaedit://") || url.starts_with("agentic://") {
         "agentic"
+    } else if url.starts_with("repurpose://") {
+        "repurpose"
     } else if url.contains("youtube.com") || url.contains("youtu.be") {
         "youtube"
     } else if url.starts_with("upload://") {
@@ -245,6 +249,7 @@ async fn create_task(
     let stt_provider = req.stt_provider.clone().unwrap_or_else(|| "deepgram".into());
     let studio_payload_json = req.studio_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
     let novaedit_payload_json = req.novaedit_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
+    let repurpose_payload_json = req.repurpose_payload.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
 
     let source_title = req.source_title.unwrap_or_else(|| url.clone());
 
@@ -266,8 +271,8 @@ async fn create_task(
             reframe_frame_skip, reframe_layout, speaker_active_switch, split_divider,
             originality_boost, translate_language, giphy_api_key,
             studio_payload, highlight_color, caption_animation, auto_emojis,
-             watermark_position, watermark_opacity, novaedit_payload, llm_provider)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+             watermark_position, watermark_opacity, novaedit_payload, llm_provider, repurpose_payload)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
     )
     .bind(task_id.to_string())
     .bind(&url)
@@ -307,6 +312,7 @@ async fn create_task(
     .bind(watermark_opacity)
     .bind(novaedit_payload_json)
     .bind(req.llm_provider.as_deref().unwrap_or("gemini-3.1-flash-lite"))
+    .bind(repurpose_payload_json)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -377,6 +383,8 @@ async fn get_task(
         "novaedit_payload": task.novaedit_payload.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
         "edit_plan": task.edit_plan.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
         "review_score": task.review_score.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+        "repurpose_payload": task.repurpose_payload.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+        "repurpose_result": task.repurpose_result.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
         "highlight_color": task.highlight_color,
         "caption_animation": task.caption_animation,
         "auto_emojis": task.auto_emojis,
@@ -386,6 +394,98 @@ async fn get_task(
         "completed_at": task.completed_at,
         "clips": clips,
     })))
+}
+
+async fn repurpose_pdf(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Response, (StatusCode, Json<Value>)> {
+    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT source_title, repurpose_result FROM tasks WHERE id = ? AND source_type = 'repurpose'"
+    ).bind(id.to_string()).fetch_optional(&state.db).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let (title, raw) = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Repurpose task not found"}))))?;
+    let result: Value = serde_json::from_str(raw.as_deref().unwrap_or("{}"))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut lines = vec![
+        "NOVACLIP - NOVA REPURPOSE".to_string(),
+        title.unwrap_or_else(|| "Content Campaign".into()),
+        String::new(),
+        format!("Audience: {}", result["audience"].as_str().unwrap_or("")),
+        format!("Goal: {}", result["goal"].as_str().unwrap_or("")),
+        format!("Tone: {}", result["tone"].as_str().unwrap_or("")),
+        format!("Core message: {}", result["core_message"].as_str().unwrap_or("")),
+        format!("CTA: {}", result["cta"].as_str().unwrap_or("")),
+        String::new(),
+        "PLATFORM CONTENT".to_string(),
+    ];
+    if let Some(platforms) = result.get("platform_copy").and_then(Value::as_object) {
+        for (platform, content) in platforms {
+            lines.push(String::new());
+            lines.push(platform.to_uppercase());
+            flatten_pdf_value(content, "", &mut lines);
+        }
+    }
+    let pdf = build_text_pdf(&lines);
+    Response::builder()
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", format!("attachment; filename=\"nova-repurpose-{}.pdf\"", id))
+        .body(axum::body::Body::from(pdf))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))
+}
+
+fn flatten_pdf_value(value: &Value, prefix: &str, lines: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => for (key, child) in map {
+            let label = if prefix.is_empty() { key.replace('_', " ") } else { format!("{} - {}", prefix, key.replace('_', " ")) };
+            flatten_pdf_value(child, &label, lines);
+        },
+        Value::Array(items) => for item in items {
+            if let Some(text) = item.as_str() { lines.push(format!("- {}", text)); }
+            else { flatten_pdf_value(item, prefix, lines); }
+        },
+        Value::String(text) => {
+            lines.push(format!("{}: {}", prefix, text));
+        }
+        other if !other.is_null() => lines.push(format!("{}: {}", prefix, other)),
+        _ => {}
+    }
+}
+
+fn build_text_pdf(lines: &[String]) -> Vec<u8> {
+    fn escape(text: &str) -> String {
+        text.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)")
+            .chars().map(|c| if c.is_ascii() { c } else { '?' }).collect()
+    }
+    let mut content = String::from("BT\n/F1 11 Tf\n50 790 Td\n14 TL\n");
+    for line in lines.iter().take(52) {
+        let mut remaining = line.as_str();
+        while !remaining.is_empty() {
+            let end = remaining.char_indices().nth(92).map(|(i, _)| i).unwrap_or(remaining.len());
+            content.push_str(&format!("({}) Tj\nT*\n", escape(&remaining[..end])));
+            remaining = &remaining[end..];
+        }
+        if line.is_empty() { content.push_str("T*\n"); }
+    }
+    content.push_str("ET\n");
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_string(),
+        format!("<< /Length {} >>\nstream\n{}endstream", content.len(), content),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    ];
+    let mut pdf = String::from("%PDF-1.4\n");
+    let mut offsets = vec![0usize];
+    for (i, object) in objects.iter().enumerate() {
+        offsets.push(pdf.len());
+        pdf.push_str(&format!("{} 0 obj\n{}\nendobj\n", i + 1, object));
+    }
+    let xref = pdf.len();
+    pdf.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1));
+    for offset in offsets.iter().skip(1) { pdf.push_str(&format!("{:010} 00000 n \n", offset)); }
+    pdf.push_str(&format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF", objects.len() + 1, xref));
+    pdf.into_bytes()
 }
 
 async fn delete_task(
