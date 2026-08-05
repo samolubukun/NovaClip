@@ -15,6 +15,10 @@ export default function Nav() {
     if (location.pathname === "/repurpose") return "repurpose";
     return "clipper";
   });
+  const [studioBroll, setStudioBroll] = useState<"stock" | "ai">(() => {
+    const v = sessionStorage.getItem("nova_studio_mode");
+    return v === "ai" ? "ai" : "stock";
+  });
 
   useEffect(() => {
     const syncMode = () => {
@@ -31,10 +35,19 @@ export default function Nav() {
       setMode("clipper");
       }
     };
+    const syncStudioBroll = () => {
+      const v = sessionStorage.getItem("nova_studio_mode");
+      setStudioBroll(v === "ai" ? "ai" : "stock");
+    };
 
     syncMode();
+    syncStudioBroll();
     window.addEventListener("nova-task-type-change", syncMode);
-    return () => window.removeEventListener("nova-task-type-change", syncMode);
+    window.addEventListener("nova-studio-mode-change", syncStudioBroll);
+    return () => {
+      window.removeEventListener("nova-task-type-change", syncMode);
+      window.removeEventListener("nova-studio-mode-change", syncStudioBroll);
+    };
   }, [location.pathname]);
 
   const tabStyle = (tab: Mode) => {
@@ -42,7 +55,7 @@ export default function Nav() {
     const colors = {
       clipper: { background: "var(--accent)", color: "#000", glow: "rgba(255,224,0,0.22)" },
       novaedit: { background: "#22d3ee", color: "#001014", glow: "rgba(34,211,238,0.22)" },
-      studio: { background: "#8b5cf6", color: "#fff", glow: "rgba(139,92,246,0.28)" },
+      studio: studioBroll === "ai" ? { background: "#d946ef", color: "#fff", glow: "rgba(217,70,239,0.28)" } : { background: "#8b5cf6", color: "#fff", glow: "rgba(139,92,246,0.28)" },
       repurpose: { background: "#f43f5e", color: "#fff", glow: "rgba(244,63,94,0.28)" },
     }[tab];
 
@@ -102,6 +115,7 @@ export default function Nav() {
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <button
               className="btn btn-ghost btn-sm"
+              data-open-settings
               onClick={() => setSettingsOpen(true)}
               title="Settings & API Keys"
             >
