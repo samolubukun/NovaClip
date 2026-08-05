@@ -407,26 +407,13 @@ async fn repurpose_pdf(
     let (title, raw) = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "Repurpose task not found"}))))?;
     let result: Value = serde_json::from_str(raw.as_deref().unwrap_or("{}"))
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    let mut lines = vec![
-        "NOVACLIP - NOVA REPURPOSE".to_string(),
-        title.unwrap_or_else(|| "Content Campaign".into()),
-        String::new(),
-        format!("Audience: {}", result["audience"].as_str().unwrap_or("")),
-        format!("Goal: {}", result["goal"].as_str().unwrap_or("")),
-        format!("Tone: {}", result["tone"].as_str().unwrap_or("")),
-        format!("Core message: {}", result["core_message"].as_str().unwrap_or("")),
-        format!("CTA: {}", result["cta"].as_str().unwrap_or("")),
-        String::new(),
-        "PLATFORM CONTENT".to_string(),
-    ];
-    if let Some(platforms) = result.get("platform_copy").and_then(Value::as_object) {
-        for (platform, content) in platforms {
-            lines.push(String::new());
-            lines.push(platform.to_uppercase());
-            flatten_pdf_value(content, "", &mut lines);
-        }
-    }
-    let pdf = build_text_pdf(&lines);
+    let campaign_title = result["campaign_name"].as_str().unwrap_or(title.as_deref().unwrap_or("Content Campaign")).to_string();
+    let logo = read_logo();
+    let mut doc = PdfDoc::new(&logo);
+    doc.header(&campaign_title, &result);
+    doc.emit_all(&result);
+    let pages = doc.finish();
+    let pdf = build_campaign_pdf(&pages, &logo);
     Response::builder()
         .header("Content-Type", "application/pdf")
         .header("Content-Disposition", format!("attachment; filename=\"nova-repurpose-{}.pdf\"", id))
@@ -434,58 +421,325 @@ async fn repurpose_pdf(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))
 }
 
-fn flatten_pdf_value(value: &Value, prefix: &str, lines: &mut Vec<String>) {
-    match value {
-        Value::Object(map) => for (key, child) in map {
-            let label = if prefix.is_empty() { key.replace('_', " ") } else { format!("{} - {}", prefix, key.replace('_', " ")) };
-            flatten_pdf_value(child, &label, lines);
-        },
-        Value::Array(items) => for item in items {
-            if let Some(text) = item.as_str() { lines.push(format!("- {}", text)); }
-            else { flatten_pdf_value(item, prefix, lines); }
-        },
-        Value::String(text) => {
-            lines.push(format!("{}: {}", prefix, text));
+// ---------------- PDF generation ----------------
+
+const PDF_PAGE_W: f32 = 612.0;
+const PDF_PAGE_H: f32 = 842.0;
+const PDF_MARGIN: f32 = 52.0;
+const PDF_TOP: f32 = 60.0;
+const PDF_BOTTOM: f32 = 52.0;
+const PDF_ROSE: (f32, f32, f32) = (0.956, 0.247, 0.369);
+const PDF_ACCENT: (f32, f32, f32) = (0.988, 0.443, 0.522);
+const PDF_DARK: (f32, f32, f32) = (0.07, 0.07, 0.09);
+const PDF_MUTED: (f32, f32, f32) = (0.42, 0.42, 0.47);
+
+/// Locate the NovaClip logo JPEG and parse its dimensions from the JPEG header.
+fn read_logo() -> Option<(Vec<u8>, u32, u32)> {
+    let candidates: [PathBuf; 6] = [
+        "../frontend/src/assets/logo.jpg".into(),
+        "../frontend/public/logo.jpg".into(),
+        "frontend/src/assets/logo.jpg".into(),
+        "frontend/public/logo.jpg".into(),
+        "src/assets/logo.jpg".into(),
+        "public/logo.jpg".into(),
+    ];
+    for p in candidates {
+        if let Ok(bytes) = std::fs::read(PathBuf::from(p)) {
+            if let Some((w, h)) = jpeg_dimensions(&bytes) {
+                return Some((bytes, w, h));
+            }
         }
-        other if !other.is_null() => lines.push(format!("{}: {}", prefix, other)),
-        _ => {}
+    }
+    None
+}
+
+/// Extract width/height from a JPEG by scanning marker segments.
+fn jpeg_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    let mut i = 2usize;
+    while i + 9 < bytes.len() {
+        if bytes[i] != 0xFF { i += 1; continue; }
+        let marker = bytes[i + 1];
+        if marker == 0xD8 || marker == 0xD9 { i += 2; continue; }
+        let len = ((bytes[i + 2] as usize) << 8) | bytes[i + 3] as usize;
+        if len < 2 { i += 2; continue; }
+        if (0xC0..=0xCF).contains(&marker) && marker != 0xC4 && marker != 0xC8 && marker != 0xCC {
+            let h = ((bytes[i + 5] as u32) << 8) | bytes[i + 6] as u32;
+            let w = ((bytes[i + 7] as u32) << 8) | bytes[i + 8] as u32;
+            return Some((w, h));
+        }
+        i += 2 + len;
+    }
+    None
+}
+
+/// Escape PDF string text (ASCII only, PDF parens/backslash escaped).
+fn pdf_escape(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)")
+        .chars().map(|c| if c.is_ascii() { c } else { ' ' }).collect()
+}
+
+fn pdf_wrap(text: &str, size: f32) -> Vec<String> {
+    let avail = PDF_PAGE_W - 2.0 * PDF_MARGIN;
+    let budget = (avail / (0.52 * size)).floor() as usize;
+    if budget <= 0 { return vec![text.to_string()]; }
+    let mut out = Vec::new();
+    for para in text.split('\n') {
+        let words: Vec<&str> = para.split(' ').collect();
+        let mut line = String::new();
+        for w in words {
+            if w.is_empty() { continue; }
+            if line.is_empty() { line = w.to_string(); }
+            else if line.len() + 1 + w.len() <= budget { line.push(' '); line.push_str(w); }
+            else { out.push(line.clone()); line = w.to_string(); }
+        }
+        if !line.is_empty() { out.push(line); }
+    }
+    if out.is_empty() { out.push(String::new()); }
+    out
+}
+
+struct PdfPage {
+    content: String,
+}
+
+struct PdfDoc {
+    pages: Vec<PdfPage>,
+    cur: String,
+    y: f32,
+    first: bool,
+}
+
+impl PdfDoc {
+    fn new(logo: &Option<(Vec<u8>, u32, u32)>) -> Self {
+        let mut doc = PdfDoc {
+            pages: Vec::new(),
+            cur: String::new(),
+            y: PDF_PAGE_H - PDF_TOP,
+            first: true,
+        };
+        // Brand bar (rose) across the top of the first page.
+        // PDF origin is bottom-left: bar spans y from top-46 to top.
+        let bar_y = PDF_PAGE_H - 46.0;
+        doc.cur.push_str(&format!(
+            "{} {} {} rg\n0 {} {} {} re f\n",
+            PDF_ROSE.0, PDF_ROSE.1, PDF_ROSE.2,
+            bar_y, PDF_PAGE_W, 46.0
+        ));
+        if let Some((_, w, h)) = logo {
+            let make = *w as f32 / *h as f32;
+            let hh = 30.0;
+            let ww = hh * make;
+            // Vertically center the logo in the bar: baseline at bar top - 38.
+            let logo_y = bar_y + 38.0 - hh; // bottom-left y of logo
+            // cm matrix is "a b c d e f" => scaleX 0 0 scaleY translateX translateY
+            doc.cur.push_str(&format!(
+                "q\n{} 0 0 {} {} {} cm\n/Im1 Do\nQ\n",
+                ww, hh, 56.0, logo_y
+            ));
+        } else {
+            // White text fallback if logo missing
+            doc.cur.push_str(&format!(
+                "/F2 16 Tf\n1 1 1 rg\nBT\n68 {} Td\n(NovaClip) Tj\nET\n",
+                bar_y + 10.0
+            ));
+        }
+        doc
+    }
+
+    fn emit(&mut self, text: &str, font: &str, size: f32, color: (f32, f32, f32), leading: f32) {
+        for line in pdf_wrap(text, size) {
+            if self.y - leading < PDF_BOTTOM {
+                self.new_page();
+            }
+            self.cur.push_str(&format!(
+                "{} {} {} rg\n{} {} Tf\nBT\n{} {} Td\n({}) Tj\nET\n",
+                color.0, color.1, color.2, font, size, PDF_MARGIN, self.y, pdf_escape(&line)
+            ));
+            self.y -= leading;
+        }
+    }
+
+    fn space(&mut self, pts: f32) { self.y -= pts; }
+
+    fn new_page(&mut self) {
+        self.pages.push(PdfPage { content: std::mem::take(&mut self.cur) });
+        // thin rose rule on non-first pages
+        self.cur.push_str(&format!(
+            "{} {} {} rg\n{} {} {} {} re f\n",
+            PDF_ACCENT.0, PDF_ACCENT.1, PDF_ACCENT.2,
+            PDF_MARGIN, PDF_PAGE_H - 44.0, PDF_PAGE_W - 2.0 * PDF_MARGIN, 1.5
+        ));
+        self.y = PDF_PAGE_H - PDF_TOP;
+        self.first = false;
+    }
+
+    fn header(&mut self, campaign: &str, result: &Value) {
+        // Title block beneath the brand bar
+        self.space(62.0);
+        self.emit(campaign, "/F2", 22.0, PDF_DARK, 26.0);
+        self.space(10.0);
+    }
+
+    fn emit_all(&mut self, result: &Value) {
+        let mut copy = result.get("platform_copy").and_then(Value::as_object).cloned().unwrap_or_default();
+        // Defensive: if the model (or an older task) wrapped content under "platforms",
+        // unwrap it and drop any metadata keys.
+        if let Some(inner) = copy.remove("platforms").and_then(|v| v.as_object().cloned()) {
+            copy = inner;
+        }
+        for meta in ["audience", "campaign", "goal", "tone", "source", "core_message", "cta"] {
+            copy.remove(meta);
+        }
+        if copy.is_empty() { return; }
+
+        self.emit("PLATFORM CONTENT", "/F2", 13.0, PDF_ROSE, 18.0);
+        for (platform, content) in &copy {
+            self.new_page_section(platform);
+            if let Value::Object(fields) = content {
+                for (key, value) in fields {
+                    self.emit_field(key, value);
+                }
+            } else {
+                self.emit("(no content)", "/F1", 10.5, PDF_MUTED, 14.0);
+            }
+        }
+    }
+
+    fn new_page_section(&mut self, platform: &str) {
+        if self.y < PDF_BOTTOM + 120.0 { self.new_page(); } else { self.space(16.0); }
+        // platform header with rose pill underline
+        self.emit(&format!("{}", platform.to_uppercase()), "/F2", 15.0, PDF_ROSE, 19.0);
+        self.space(6.0);
+        self.cur.push_str(&format!(
+            "{} {} {} rg\n{} {} {} {} re f\n",
+            PDF_ROSE.0, PDF_ROSE.1, PDF_ROSE.2,
+            PDF_MARGIN, self.y, 60.0, 3.0
+        ));
+        self.y -= 14.0;
+    }
+
+    fn emit_field(&mut self, key: &str, value: &Value) {
+        let label = key.replace('_', " ").to_uppercase();
+        match value {
+            Value::String(s) => {
+                if s.is_empty() { return; }
+                if self.y < PDF_BOTTOM + 40.0 { self.new_page(); } else { self.space(8.0); }
+                self.emit(label.as_str(), "/F2", 10.0, PDF_ACCENT, 13.0);
+                self.emit(s, "/F1", 10.5, PDF_DARK, 14.5);
+            }
+            Value::Array(items) => {
+                if items.is_empty() { return; }
+                if self.y < PDF_BOTTOM + 40.0 { self.new_page(); } else { self.space(8.0); }
+                self.emit(label.as_str(), "/F2", 10.0, PDF_ACCENT, 13.0);
+                for item in items {
+                    match item {
+                        Value::String(s) => {
+                            self.emit(&format!("  - {}", s), "/F1", 10.5, PDF_DARK, 14.5);
+                        }
+                        Value::Object(m) => {
+                            let joined: Vec<String> = m.iter()
+                                .map(|(k, v)| format!("{}: {}", k.replace('_', " "), v.as_str().unwrap_or("")))
+                                .collect();
+                            self.emit(&joined.join(" | "), "/F1", 10.5, PDF_DARK, 14.5);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Value::Object(m) => {
+                if m.is_empty() { return; }
+                if self.y < PDF_BOTTOM + 40.0 { self.new_page(); } else { self.space(8.0); }
+                self.emit(label.as_str(), "/F2", 10.0, PDF_ACCENT, 13.0);
+                let mut lines = Vec::new();
+                for (k, v) in m {
+                    if let Some(s) = v.as_str() {
+                        lines.push(format!("  {}: {}", k.replace('_', " "), s));
+                    }
+                }
+                let joined = lines.join("\n");
+                for line in joined.split('\n') {
+                    self.emit(line, "/F1", 10.5, PDF_DARK, 14.0);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn finish(mut self) -> Vec<PdfPage> {
+        self.pages.push(PdfPage { content: std::mem::take(&mut self.cur) });
+        self.pages
     }
 }
 
-fn build_text_pdf(lines: &[String]) -> Vec<u8> {
-    fn escape(text: &str) -> String {
-        text.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)")
-            .chars().map(|c| if c.is_ascii() { c } else { '?' }).collect()
+fn build_campaign_pdf(pages: &[PdfPage], logo: &Option<(Vec<u8>, u32, u32)>) -> Vec<u8> {
+    let n = pages.len();
+    let has_logo = logo.is_some();
+    let mut objects: Vec<Vec<u8>> = Vec::new();
+    // 0: Catalog, 1: Pages
+    objects.push(format!("<< /Type /Catalog /Pages 2 0 R >>").into_bytes());
+    let mut kids = String::new();
+    for i in 0..n {
+        kids.push_str(&format!("{} 0 R ", 3 + i));
     }
-    let mut content = String::from("BT\n/F1 11 Tf\n50 790 Td\n14 TL\n");
-    for line in lines.iter().take(52) {
-        let mut remaining = line.as_str();
-        while !remaining.is_empty() {
-            let end = remaining.char_indices().nth(92).map(|(i, _)| i).unwrap_or(remaining.len());
-            content.push_str(&format!("({}) Tj\nT*\n", escape(&remaining[..end])));
-            remaining = &remaining[end..];
-        }
-        if line.is_empty() { content.push_str("T*\n"); }
+    objects.push(format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids, n).into_bytes());
+
+    // Object numbering (1-based obj numbers):
+    //   1 Catalog, 2 Pages, 3..2+n page objects, 3+n F1, 4+n F2,
+    //   5+n Im1 (if logo), then content streams.
+    let f1 = 3 + n;                         // Helvetica
+    let f2 = 4 + n;                         // Helvetica-Bold
+    let img = 5 + n;                        // Im1
+    let content_base = if has_logo { 6 + n } else { 5 + n };
+
+    let resources_base = format!(
+        "/Font << /F1 {} 0 R /F2 {} 0 R >>{}",
+        f1, f2,
+        if has_logo { format!(" /XObject << /Im1 {} 0 R >>", img) } else { String::new() }
+    );
+
+    for i in 0..n {
+        objects.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Resources << {}{} >> /Contents {} 0 R >>",
+            PDF_PAGE_W as i32, PDF_PAGE_H as i32, resources_base,
+            "",
+            content_base + i
+        ).into_bytes());
     }
-    content.push_str("ET\n");
-    let objects = [
-        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_string(),
-        format!("<< /Length {} >>\nstream\n{}endstream", content.len(), content),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
-    ];
-    let mut pdf = String::from("%PDF-1.4\n");
+    // Fonts
+    objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
+    objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec());
+    // Image (only on first page resources but defined globally)
+    if has_logo {
+        let (bytes, w, h) = logo.clone().unwrap();
+        let mut o = format!("<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n", w, h, bytes.len()).into_bytes();
+        o.extend_from_slice(&bytes);
+        o.extend_from_slice(b"\nendstream");
+        objects.push(o);
+    }
+    // Content streams
+    for page in pages {
+        let body = page.content.as_bytes();
+        let mut o = format!("<< /Length {} >>\nstream\n", body.len()).into_bytes();
+        o.extend_from_slice(body);
+        o.extend_from_slice(b"\nendstream");
+        objects.push(o);
+    }
+
+    // Assemble with xref
+    let mut pdf = Vec::<u8>::from(&b"%PDF-1.4\n"[..]);
     let mut offsets = vec![0usize];
-    for (i, object) in objects.iter().enumerate() {
+    for (i, obj) in objects.iter().enumerate() {
         offsets.push(pdf.len());
-        pdf.push_str(&format!("{} 0 obj\n{}\nendobj\n", i + 1, object));
+        pdf.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+        pdf.extend_from_slice(obj);
+        pdf.extend_from_slice(b"\nendobj\n");
     }
     let xref = pdf.len();
-    pdf.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1));
-    for offset in offsets.iter().skip(1) { pdf.push_str(&format!("{:010} 00000 n \n", offset)); }
-    pdf.push_str(&format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF", objects.len() + 1, xref));
-    pdf.into_bytes()
+    pdf.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+    for off in offsets.iter().skip(1) {
+        pdf.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
+    }
+    pdf.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF", objects.len() + 1, xref).as_bytes());
+    pdf
 }
 
 async fn delete_task(
