@@ -158,4 +158,106 @@ Example:
         let items: Vec<ScriptItem> = serde_json::from_str(clean).unwrap_or_default();
         Ok(items)
     }
+
+    /// Generates a detailed visual prompt per sentence for AI text-to-video
+    /// B-roll generation (WaveSpeed Seedance). Batched into a single LLM call;
+    /// falls back to a topic-templated prompt when the LLM is unavailable.
+    pub async fn generate_ai_clip_prompts(
+        &self,
+        script: &str,
+        sentences: &[String],
+        topic: &str,
+    ) -> Vec<String> {
+        let spec: Vec<String> = sentences
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("[{}]: \"{}\"", i, s))
+            .collect();
+        let system_prompt = "You are a video director writing detailed visual prompts for AI text-to-video B-roll clips. \
+Each clip is shown during one sentence of a narrated script. For every sentence below, provide a single detailed English \
+prompt for an AI video generator. It must be visually concrete and RELEVANT to what the narrator is saying. Describe the \
+subject, environment, camera movement, lighting and mood. 30-80 words. Never mention B-roll or stock footage, never show \
+people speaking, never include readable text.\n\
+Return only JSON: {\"clips\":[{\"index\":0,\"prompt\":\"...\"}]}";
+
+        for _attempt in 0..3 {
+            let result = if self.provider_or_model.contains('/') || !self.openrouter_key.is_empty() {
+                self.call_openrouter_prompt(&system_prompt, &format!("Overall topic: {}\n\nFull script: {}\n\nSentences:\n{}", topic, script, spec.join("\n"))).await
+            } else {
+                self.call_gemini_prompt(&system_prompt, &format!("Overall topic: {}\n\nFull script: {}\n\nSentences:\n{}", topic, script, spec.join("\n"))).await
+            };
+            if let Ok(raw) = result {
+                let clips = raw.get("clips").and_then(|v| v.as_array());
+                if let Some(clips) = clips {
+                    let mut prompts: Vec<Option<String>> = vec![None; sentences.len()];
+                    let mut count = 0;
+                    for clip in clips {
+                        let index = clip.get("index").and_then(|v| v.as_i64()).unwrap_or(-1) as usize;
+                        if let Some(prompt) = clip.get("prompt").and_then(|v| v.as_str()) {
+                            if index < sentences.len() && !prompt.trim().is_empty() {
+                                prompts[index] = Some(prompt.trim().to_string());
+                                count += 1;
+                            }
+                        }
+                    }
+                    if count >= (sentences.len() as f64 * 0.6).ceil() as usize {
+                        return prompts.into_iter().enumerate().map(|(i, p)| p.unwrap_or_else(|| {
+                            format!("Cinematic b-roll related to {}: {}", topic, sentences[i])
+                        })).collect();
+                    }
+                }
+            }
+        }
+
+        // Fallback: topic-templated prompts
+        sentences.iter().map(|s| format!("Cinematic b-roll related to {}: {}", topic, s)).collect()
+    }
+
+    async fn call_gemini_prompt(&self, system_prompt: &str, user_text: &str) -> Result<Value> {
+        let model = if self.provider_or_model.is_empty() { Self::GEMINI_DEFAULT_MODEL } else { &self.provider_or_model };
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, self.api_key
+        );
+        let body = json!({
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+            "generationConfig": {"temperature": 0.7, "responseMimeType": "application/json"}
+        });
+        let client = Client::new();
+        let response = client.post(&url).json(&body).send().await.context("Gemini prompt request failed")?;
+        let resp: Value = response.json().await.context("Failed to parse Gemini response")?;
+        if let Some(err) = Self::gemini_error(&resp) {
+            anyhow::bail!("Gemini API error: {}", err);
+        }
+        let text = resp.pointer("/candidates/0/content/parts/0/text").and_then(|v| v.as_str()).unwrap_or("{}");
+        let clean = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+        Ok(serde_json::from_str(clean).unwrap_or(json!({})))
+    }
+
+    async fn call_openrouter_prompt(&self, system_prompt: &str, user_text: &str) -> Result<Value> {
+        let model = if self.provider_or_model.is_empty() { "openrouter/free" } else { &self.provider_or_model };
+        let url = "https://openrouter.ai/api/v1/chat/completions";
+        let body = json!({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            "temperature": 0.7
+        });
+        let client = Client::new();
+        let response = client.post(url)
+            .header("Authorization", format!("Bearer {}", self.openrouter_key))
+            .header("HTTP-Referer", "https://novaclip.app")
+            .header("X-Title", "NovaClip")
+            .json(&body)
+            .send()
+            .await
+            .context("OpenRouter prompt request failed")?;
+        let resp: Value = response.json().await.context("Failed to parse OpenRouter response")?;
+        let text = resp.pointer("/choices/0/message/content").and_then(|v| v.as_str()).unwrap_or("{}");
+        let clean = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+        Ok(serde_json::from_str(clean).unwrap_or(json!({})))
+    }
 }
