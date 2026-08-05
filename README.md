@@ -17,6 +17,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 [![Gemini AI](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter_Free_Models-6566F1?style=for-the-badge&logo=openai&logoColor=white)](https://openrouter.ai/)
 [![Deepgram](https://img.shields.io/badge/Deepgram_Nova--3-13EF95?style=for-the-badge&logo=deepgram&logoColor=black)](https://deepgram.com/)
+[![WaveSpeed](https://img.shields.io/badge/WaveSpeed_Seedance-6B3FBB?style=for-the-badge&logo=wavespeed&logoColor=white)](https://wavespeed.ai/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
@@ -29,10 +30,10 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 
 - **Nova Clipper - Viral Clip Generator**: Find high-potential moments in uploaded videos, YouTube content, podcasts, and streams. Transcribe speech, score candidate segments, crop for multiple aspect ratios, burn animated captions, and export individual clips or ZIP packages.
 - **Nova Edit - Agentic Video Editor**: Upload one or multiple raw footage files and provide a creative brief. Nova Edit combines scene detection, transcript timestamps, and representative-frame vision analysis to build a footage index. A Director proposes an ordered EditPlan with exact trims and optional text overlays, waits for human approval, then an Editor renders the cut and a Reviewer scores the result. Request a new plan or re-edit using natural-language feedback.
-- **Nova Studio - Faceless AI Creator**: Generate complete faceless videos from scratch. Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
+- **Nova Studio - Faceless AI Creator**: Generate complete faceless videos from scratch. Two b-roll modes: **Stock B-Roll** scrapes HD media from Pinterest/Pexels/Pixabay, while **AI B-Roll** renders a unique AI video clip per scene with the `bytedance/seedance-v1-pro-fast` text-to-video model on **WaveSpeed** (up to 3 clips in parallel, Pexels as fallback) plus optional AI background music via **Lyria** (SoundHelix fallback). Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
 - **Provider-Based AI Model Selection**: Choose Gemini or OpenRouter independently in Nova Clipper, Nova Studio, and Nova Edit. Gemini defaults to Gemini 3.1 Flash-Lite. Clipper and Studio offer the current text-capable OpenRouter choices, while Nova Edit only exposes free multimodal models used for visual footage analysis (`google/gemma-4-26b-a4b-it:free`, `nvidia/nemotron-nano-12b-v2-vl:free`, and `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`).
 - **Multi-Source Stock Media Scrapers**: Automated HD video and photo scraping with multi-platform fallback across **Pinterest Video & Photo Scraper** (Playwright + yt-dlp), **Pexels API**, and **Pixabay API**.
-- **Multi-Provider Neural Voiceovers (TTS) with Duration Sync**: Choose between **Microsoft Edge-TTS** (free, 10+ languages, estimated word timestamps), **ElevenLabs API** (native /with-timestamps endpoint for character-level alignment), or **Deepgram Aura TTS** + Deepgram STT (model nova-2) for precise word timing. Final video uses `-shortest` to ensure audio and video always end together.
+- **Multi-Provider Neural Voiceovers (TTS) with Duration Sync**: Choose between **Microsoft Edge-TTS** (free, 10+ languages, estimated word timestamps), **ElevenLabs API** (native /with-timestamps endpoint for character-level alignment), or **Deepgram Aura TTS** + Deepgram STT (model nova-2) for precise word timing. Final video uses `-shortest` to ensure audio and video always end together. AI B-Roll mode restricts voiceovers to Deepgram Aura and ElevenLabs only.
 - **AI Virality Scoring**: Gemini AI evaluates hooks, retention probability, emotional peaks, and shareability for every extracted segment.
 - **Global ASS Karaoke Subtitles**: Word-level timestamps from any TTS provider drive multi-color active word-pop subtitle animations. Generated as a single `.ass` file for the entire video with per-word timing, no timestamp rebasing needed.
 - **Font & Typography Library**: Full studio typography control with 12 popular fonts (The Bold Font, TikTok Sans, Montserrat, Impact, Bebas Neue, Inter, etc.) and custom font size slider.
@@ -48,7 +49,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 - **AI Edit Chat**: Natural-language editing commands on generated clips (trim, delete, reframe, captions, translate, memes, merge) via a floating chat panel on the Task page.
 - **Smart Multi-Aspect Cropping**: Auto-detects and centers active speakers for 9:16 vertical shorts, 1:1 square posts, or 16:9 widescreen clips.
 - **Zip Export**: Export individual clips or download all generated clips in a single `.zip` package.
-- **100% BYOK (Bring Your Own Key)**: Local browser storage for Gemini, OpenRouter, ElevenLabs, Deepgram, Pexels, and Pixabay keys. Runs 100% offline-compatible for desktop & local deployment.
+- **100% BYOK (Bring Your Own Key)**: Local browser storage for Gemini, OpenRouter, ElevenLabs, Deepgram, WaveSpeed, Pexels, and Pixabay keys. Runs 100% offline-compatible for desktop & local deployment.
 
 ---
 
@@ -90,12 +91,26 @@ Nova Edit currently focuses on intelligent footage selection, transcript-aware t
 
 ---
 
-## Technology Stack
+## Nova Studio AI B-Roll Workflow
+
+Nova Studio offers two b-roll modes for faceless AI video creation:
+
+- **Stock B-Roll**: The original flow. Scrapes HD video/photo clips from Pinterest, Pexels, and Pixabay based on per-sentence search queries, downloads them, and trims each to its voiceover segment duration.
+- **AI B-Roll**: Generates a unique AI video clip for every sentence using the `bytedance/seedance-v1-pro-fast` text-to-video model via the **WaveSpeed API**. Clips render in parallel (up to 3 concurrent) and are downloaded and trimmed like stock clips. If the WaveSpeed call fails or returns no usable clip, a Pexels stock clip is used as fallback; black placeholder frames are the last resort. When AI background music is selected, **Lyria** generates it (with SoundHelix as fallback).
+
+### AI B-Roll Notes
+
+- Requires a **WaveSpeed API key**, configured in Settings (⚙️) or passed per-task.
+- Voiceover is restricted to **Deepgram Aura** and **ElevenLabs** for precise word timestamps; Edge-TTS is auto-switched to Deepgram Aura in AI mode.
+- The video model, resolution, and clip concurrency are configurable via `WAVESPEED_VIDEO_MODEL` (default `bytedance/seedance-v1-pro-fast/text-to-video`), `WAVESPEED_VIDEO_RESOLUTION` (default 480p), and `WAVESPEED_CLIP_CONCURRENCY` (default 3) environment variables.
+- The Nova Studio nav tab and page theme switch to fuchsia in AI mode.
+
+---
 
 | Layer | Technologies & Tools |
 |---|---|
 | **Backend API** | Rust, Axum 0.8, Tokio Async Runtime, SQLx SQLite (WAL mode) |
-| **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC In-Process Async Queue, Playwright Chromium (Pinterest scraper) |
+| **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC In-Process Async Queue, Playwright Chromium (Pinterest scraper), WaveSpeed Seedance & Lyria API |
 | **Subject Tracking** | Python 3.11, Ultralytics YOLO11n-seg, MediaPipe Face/Pose, OpenCV, SceneDetect |
 | **Speech AI / STT / TTS** | Deepgram Nova-3 STT, Vosk Local STT, Whisper Local (ggml-base.bin), ElevenLabs with-timestamps API, Edge-TTS, Deepgram Aura TTS |
 | **Analysis & LLM AI** | Google Gemini and OpenRouter for virality analysis, caption translation, script generation, Nova Edit planning, and editorial review |
@@ -172,6 +187,7 @@ NovaClip is engineered as a zero-vendor-lockin application. Configure your API k
 - **Google Gemini API Key**: [Get Key at Google AI Studio](https://ai.google.dev)
 - **Deepgram API Key**: [Get Key at Deepgram Console](https://console.deepgram.com)
 - **OpenRouter API Key**: [Get Key at OpenRouter](https://openrouter.ai/keys)
+- **WaveSpeed API Key**: [Get Key at WaveSpeed](https://platform.wavespeed.ai/) (required for AI B-Roll Seedance clips & Lyria music)
 
 ---
 
@@ -185,7 +201,7 @@ NovaClip/
 │   │   │   └── src/routes/ (tasks, ai_edit, media, etc.)
 │   │   ├── db/           # SQLite database models & SQLx queries
 │   │   └── worker/       # Video processing pipeline
-│   │       └── src/pipeline/ (nova_edit, clip, caption, reframe, originality, translate, tts, scraper, studio_llm, ...)
+│   │       └── src/pipeline/ (nova_edit, clip, caption, reframe, originality, translate, tts, scraper, studio_llm, wavespeed, ...)
 │   ├── novaclip_reframe/ # Python package for AI vertical reframe (YOLO + MediaPipe)
 │   │   ├── novaclip_reframe/
 │   │   │   └── auto_reframe.py  # Core subject-tracking engine
