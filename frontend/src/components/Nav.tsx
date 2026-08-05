@@ -79,8 +79,8 @@ export default function Nav() {
     <>
       <nav className="nav">
         <div className="nav-inner">
-          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-            <Link to="/" className="nav-logo" style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1.75rem" }}>
+            <Link to="/" className="nav-logo" style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginLeft: "-0.85rem" }}>
               <img
                 src="/logo.jpg?v=2"
                 alt="NovaClip Logo"
