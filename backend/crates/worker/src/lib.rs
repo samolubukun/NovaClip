@@ -527,8 +527,13 @@ async fn process_studio_task(
 
     let script = payload["script"].as_str()
         .ok_or_else(|| anyhow::anyhow!("Missing script in studio_payload"))?;
+    let mode = payload["mode"].as_str().unwrap_or("stock");
     let llm_provider = payload["llm_provider"].as_str().unwrap_or("gemini-3.1-flash-lite");
-    let tts_provider = payload["tts_provider"].as_str().unwrap_or("edge-tts");
+    let mut tts_provider = payload["tts_provider"].as_str().unwrap_or("edge-tts");
+    if mode == "ai" && !matches!(tts_provider, "elevenlabs" | "deepgram-aura") {
+        warn!("AI B-Roll mode requires Deepgram or ElevenLabs TTS (word timestamps); using Deepgram Aura instead of '{}'", tts_provider);
+        tts_provider = "deepgram-aura";
+    }
     let voice = payload["voice"].as_str().unwrap_or("en-US-ChristopherNeural");
     let target_duration = payload["duration"].as_i64().unwrap_or(60) as i32;
     let scraper_source = payload["source"].as_str().unwrap_or("all");
@@ -536,8 +541,6 @@ async fn process_studio_task(
     let vibe = payload["vibe"].as_str().unwrap_or("aesthetic");
     let subtitle_style = payload["subtitle_style"].as_str().unwrap_or("high_retention");
     let bg_music = payload["bg_music"].as_str().unwrap_or("none");
-    let watermark_pos = &cfg.watermark_position;
-    let watermark_opacity = cfg.watermark_opacity;
 
     let gemini_key = payload["api_keys"]["gemini_key"].as_str()
         .filter(|s| !s.is_empty())
@@ -557,6 +560,15 @@ async fn process_studio_task(
         .filter(|s| !s.is_empty())
         .or_else(|| cfg.pixabay_api_key.as_deref())
         .unwrap_or("");
+    let wavespeed_key = payload["api_keys"]["wavespeed_key"].as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("WAVESPEED_API_KEY").ok().filter(|s| !s.is_empty()))
+        .unwrap_or_default();
+
+    if mode == "ai" && wavespeed_key.is_empty() {
+        anyhow::bail!("AI B-Roll mode requires a WaveSpeed API key. Add it in Settings.");
+    }
 
     let (out_width, out_height) = output_dimensions(&cfg.aspect_ratio);
 
@@ -667,9 +679,118 @@ async fn process_studio_task(
         }
     }
 
-    // Step 3: Fetch ALL media clips first (one per item), store paths
+    // Step 3: Fetch ALL media clips first (one per item), store paths.
+    // Stock mode scrapes Pexels/Pixabay; AI mode generates Seedance clips.
     emit_progress(db, task_id_str, 20, "Fetching media clips...", "processing").await;
     let mut media_paths: Vec<PathBuf> = Vec::new();
+
+    if mode == "ai" {
+        // AI B-Roll: detailed visual prompts -> WaveSpeed Seedance clips (Pexels fallback)
+        let sentences: Vec<String> = items.iter().map(|i| i.sentence.clone()).collect();
+        let keywords: Vec<String> = items.iter().map(|i| i.keyword.clone()).collect();
+        emit_progress(db, task_id_str, 20, "Writing AI B-roll prompts...", "processing").await;
+        let prompts = processor
+            .generate_ai_clip_prompts(&full_script_joined, &sentences, &keywords.first().cloned().unwrap_or_default())
+            .await;
+        let clip_sec = std::env::var("WAVESPEED_VIDEO_DURATION")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(5);
+        let ai_media_dir = output_dir.join("ai_media");
+        emit_progress(db, task_id_str, 22, "Generating AI B-roll clips (Seedance)...", "processing").await;
+        let ai_paths = pipeline::wavespeed::generate_ai_media_paths(
+            wavespeed_key.clone(),
+            prompts.clone(),
+            cfg.aspect_ratio.clone(),
+            clip_sec,
+            ai_media_dir,
+            pexels_key.to_string(),
+            keywords.clone(),
+        )
+        .await;
+        for (i, p) in ai_paths.iter().enumerate() {
+            if let Some(p) = p {
+                temp_files.push(p.clone());
+                media_paths.push(p.clone());
+            } else {
+                warn!("AI clip {} could not be generated — using placeholder", i + 1);
+                let placeholder = output_dir.join(format!("placeholder_{:02}.mp4", i + 1));
+                let blank_dur = if i < sentence_word_ranges.len() {
+                    (sentence_word_ranges[i].end_time - sentence_word_ranges[i].start_time).max(2.0)
+                } else {
+                    (total_audio_dur / total_items as f64).max(2.0)
+                };
+                let dur_str = format!("{:.3}", blank_dur);
+                let vf = format!("color=c=black:s={}x{}:d={}", out_width, out_height, dur_str);
+                let status = Command::new("ffmpeg")
+                    .args(["-y", "-f", "lavfi", "-i", &vf])
+                    .args(["-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p"])
+                    .arg(placeholder.to_str().unwrap())
+                    .status().await;
+                match status {
+                    Ok(s) if s.success() => {
+                        temp_files.push(placeholder.clone());
+                        media_paths.push(placeholder);
+                    }
+                    _ => {
+                        warn!("Placeholder creation failed for scene {} — skipping entirely", i + 1);
+                        continue;
+                    }
+                }
+            }
+        }
+        if media_paths.is_empty() {
+            anyhow::bail!("All AI clip generation attempts failed — check your WaveSpeed key and model quota");
+        }
+        let actual_total = media_paths.len().min(items.len());
+        // BGM: Lyria (AI-generated) when requested
+        let full_bgm = if bg_music != "none" {
+            match pipeline::wavespeed::generate_background_music(&wavespeed_key, &full_script_joined, &output_dir).await {
+                Ok(p) => {
+                    temp_files.push(p.clone());
+                    Some(p)
+                }
+                Err(e) => {
+                    warn!("Lyria BGM generation failed: {} — continuing without BGM", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mixed_full_audio = if let Some(ref bgm_path) = full_bgm {
+            let mixed = output_dir.join("mixed_full_audio.mp3");
+            match mix_audio(&full_audio_path, bgm_path, &mixed).await {
+                Ok(()) => {
+                    temp_files.push(mixed.clone());
+                    mixed
+                }
+                Err(e) => {
+                    warn!("Audio mixing failed: {} — using raw TTS", e);
+                    full_audio_path.clone()
+                }
+            }
+        } else {
+            full_audio_path.clone()
+        };
+        // Re-run the common assembly/render path with the AI media
+        return finish_studio_render(
+            db, cfg, output_dir, task_id_str,
+            items.as_slice(),
+            &word_timestamps,
+            &sentence_word_ranges,
+            &media_paths,
+            actual_total,
+            &mixed_full_audio,
+            &caption_style,
+            out_width, out_height,
+            total_audio_dur,
+            vibe,
+        )
+        .await
+        .map(|_| ());
+    }
+
     for (i, item) in items.iter().enumerate() {
         if check_cancelled(db, task_id_str).await {
             return Ok(());
@@ -749,7 +870,51 @@ async fn process_studio_task(
         full_audio_path.clone()
     };
 
-    // Step 5: Trim each media clip to its sentence duration, then concat into single video
+    // Step 5-7: Trim scenes, concat, captions, final render, insert clip record
+    finish_studio_render(
+        db, cfg, output_dir, task_id_str,
+        items.as_slice(),
+        &word_timestamps,
+        &sentence_word_ranges,
+        &media_paths,
+        actual_total,
+        &mixed_full_audio,
+        &caption_style,
+        out_width, out_height,
+        total_audio_dur,
+        vibe,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Shared tail of the studio pipeline: trims each scene to its sentence
+/// duration, concatenates them, burns ASS captions, renders the final video
+/// with audio + watermark, and inserts the clip record. Used by both the
+/// stock and AI B-roll modes.
+#[allow(clippy::too_many_arguments)]
+async fn finish_studio_render(
+    db: &DbPool,
+    cfg: &PipelineConfig,
+    output_dir: &Path,
+    task_id_str: &str,
+    items: &[ScriptItem],
+    word_timestamps: &[WordTimestamp],
+    sentence_word_ranges: &[WordRange],
+    media_paths: &[PathBuf],
+    actual_total: usize,
+    mixed_full_audio: &Path,
+    caption_style: &pipeline::caption::CaptionStyle,
+    out_width: u32,
+    out_height: u32,
+    total_audio_dur: f64,
+    vibe: &str,
+) -> anyhow::Result<PathBuf> {
+    let watermark_pos = &cfg.watermark_position;
+    let watermark_opacity = cfg.watermark_opacity;
+    let mut temp_files: Vec<PathBuf> = vec![mixed_full_audio.to_path_buf()];
+
+    // Trim each media clip to its sentence duration, then concat into single video
     emit_progress(db, task_id_str, 60, "Assembling video scenes...", "processing").await;
     let mut trimmed_clips: Vec<PathBuf> = Vec::new();
     for i in 0..actual_total {
@@ -792,15 +957,15 @@ async fn process_studio_task(
         .map_err(|e| anyhow::anyhow!("Video concatenation failed: {}", e))?;
     temp_files.push(concated_video.clone());
 
-    // Step 6: Generate global ASS captions for entire video
+    // Generate global ASS captions for entire video
     let ass_path = output_dir.join("captions.ass");
     if cfg.add_subtitles {
         generate_global_ass(
             &ass_path,
-            &word_timestamps,
-            &sentence_word_ranges,
-            &items,
-            &caption_style,
+            word_timestamps,
+            sentence_word_ranges,
+            items,
+            caption_style,
             cfg.auto_emojis,
             out_width,
             out_height,
@@ -808,7 +973,7 @@ async fn process_studio_task(
         temp_files.push(ass_path.clone());
     }
 
-    // Step 7: Final ffmpeg — burn captions + add audio + watermark in one pass
+    // Final ffmpeg — burn captions + add audio + watermark in one pass
     emit_progress(db, task_id_str, 85, "Rendering final video...", "processing").await;
     let final_output = output_dir.join("final_video.mp4");
 
@@ -963,7 +1128,7 @@ async fn process_studio_task(
     }
 
     info!("Studio task {} completed — {} scenes → 1 final video ({:.1}s)", task_id_str, actual_total, total_audio_dur);
-    Ok(())
+    Ok(final_output)
 }
 
 /// Create a video clip from media of exact duration (no audio)
