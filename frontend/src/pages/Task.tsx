@@ -267,16 +267,97 @@ function ClipCard({ clip, taskId, aspectRatio, isSelected, onSelect }: { clip: C
   );
 }
 
+function DisplayValue({ value, label }: { value: unknown; label: string }) {
+  // Render a string
+  if (typeof value === "string") {
+    return <p style={{ color: "#ccc", fontSize: ".8rem", lineHeight: 1.6, whiteSpace: "pre-wrap", margin: 0 }}>{value || "—"}</p>;
+  }
+  // Render an array of primitives as a bulleted list
+  if (Array.isArray(value)) {
+    const allPrimitive = value.every(v => typeof v === "string" || typeof v === "number");
+    if (allPrimitive) {
+      return (
+        <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "#ccc", fontSize: ".8rem", lineHeight: 1.6 }}>
+          {value.map((item, i) => <li key={i}>{String(item)}</li>)}
+        </ul>
+      );
+    }
+  }
+  // Fallback: nested objects/arrays render their sub-fields
+  return <ObjectFields value={value as any} />;
+}
+
+function ObjectFields({ value }: { value: Record<string, unknown> | unknown[] }) {
+  if (Array.isArray(value)) {
+    return (
+      <div style={{ display: "grid", gap: ".5rem" }}>
+        {value.map((item, i) => <CopyValue key={i} label={`Item ${i + 1}`} value={item} />)}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gap: ".75rem" }}>
+      {Object.entries(value as Record<string, unknown>).map(([key, nested]) => (
+        <CopyValue key={key} label={key} value={nested} />
+      ))}
+    </div>
+  );
+}
+
 function CopyValue({ label, value }: { label: string; value: unknown }) {
   const text = Array.isArray(value) ? value.join("\n") : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "");
-  return <div style={{ background: "#0b0b0e", border: "1px solid rgba(255,255,255,.08)", borderRadius: 9, padding: ".7rem" }}><div style={{ color: "#fb7185", fontSize: ".68rem", fontWeight: 900, textTransform: "uppercase", marginBottom: ".35rem" }}>{label.replace(/_/g, " ")}</div><div style={{ color: "#ccc", whiteSpace: "pre-wrap", fontSize: ".78rem", lineHeight: 1.5 }}>{text}</div><button onClick={() => navigator.clipboard.writeText(text)} style={{ marginTop: ".5rem", background: "none", border: 0, color: "#fb7185", cursor: "pointer", fontSize: ".7rem", fontWeight: 800 }}>Copy</button></div>;
+  return (
+    <div style={{ background: "#0b0b0e", border: "1px solid rgba(255,255,255,.08)", borderRadius: 9, padding: ".7rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".45rem" }}>
+        <span style={{ color: "#fb7185", fontSize: ".68rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".04em" }}>{label.replace(/_/g, " ")}</span>
+        <button onClick={() => { navigator.clipboard.writeText(text); toast.success(`${label.replace(/_/g, " ")} copied`); }} style={{ background: "rgba(244,63,94,.12)", border: "1px solid rgba(244,63,94,.25)", color: "#fb7185", cursor: "pointer", fontSize: ".68rem", fontWeight: 800, padding: ".25rem .6rem", borderRadius: 6 }}>Copy</button>
+      </div>
+      <DisplayValue value={value} label={label} />
+    </div>
+  );
 }
 
 function RepurposeResult({ task, taskId }: { task: Task; taskId: string }) {
   const stages = ["Source Analysis", "Campaign Strategy", "Video Adaptation", "Platform Copy", "Package Finalization"];
   if (task.status !== "completed" || !task.repurpose_result) return <motion.div initial={{opacity:0}} animate={{opacity:1}} style={{ background: "linear-gradient(180deg,#181016,#0d0b0e)", border: "1px solid rgba(244,63,94,.3)", borderRadius: 20, padding: "1.75rem", marginBottom: "2rem" }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.3rem" }}><div><h3 style={{ margin: 0, color: "#fff" }}>Building your repurpose campaign</h3><span style={{ color: "#888", fontSize: ".75rem" }}>{task.progress_message}</span></div><strong style={{color:"#fb7185"}}>{task.progress}%</strong></div><div style={{ display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:".5rem" }}>{stages.map((stage,i)=><div key={stage} style={{textAlign:"center"}}><div style={{width:34,height:34,borderRadius:"50%",margin:"0 auto .5rem",background:task.progress >= (i+1)*20?"#f43f5e":"#18181d",display:"grid",placeItems:"center",fontSize:".7rem",fontWeight:900}}>{i+1}</div><span style={{fontSize:".65rem",color:task.progress >= i*20?"#fff":"#666"}}>{stage}</span></div>)}</div><div style={{height:6,background:"#08080a",borderRadius:5,marginTop:"1.2rem",overflow:"hidden"}}><div style={{height:"100%",width:`${task.progress}%`,background:"linear-gradient(90deg,#f43f5e,#fb7185)"}} /></div></motion.div>;
   const result = task.repurpose_result;
-  return <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} style={{ marginBottom: "2rem" }}><div style={{ background: "linear-gradient(180deg,#181016,#0d0b0e)", border: "1px solid rgba(244,63,94,.3)", borderRadius: 20, padding: "1.6rem", marginBottom: "1rem" }}><div style={{display:"flex",justifyContent:"space-between",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}><div><span style={{color:"#fb7185",fontSize:".7rem",fontWeight:900}}>NOVA REPURPOSE CAMPAIGN</span><h2 style={{margin:".3rem 0",color:"#fff"}}>{result.campaign_name}</h2><p style={{margin:0,color:"#999",fontSize:".8rem"}}>{result.audience} · {result.goal} · {result.tone}</p></div><a href={`/tasks/${taskId}/repurpose-pdf`} download className="btn" style={{background:"#f43f5e",color:"#fff",fontWeight:900}}>Download Campaign PDF</a></div><div style={{marginTop:"1rem",padding:".8rem",borderLeft:"3px solid #f43f5e",background:"rgba(244,63,94,.06)",color:"#ddd",fontSize:".8rem"}}>{result.core_message || "Platform-ready campaign"}{result.cta && <strong style={{display:"block",color:"#fb7185",marginTop:".3rem"}}>CTA: {result.cta}</strong>}</div></div><div style={{display:"grid",gap:"1rem"}}>{Object.entries(result.platform_copy || {}).map(([platform,content])=><section key={platform} style={{background:"#121217",border:"1px solid rgba(255,255,255,.09)",borderRadius:16,padding:"1.2rem"}}><h3 style={{margin:"0 0 .8rem",color:"#fff",textTransform:"capitalize"}}>{platform}</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".7rem"}}>{Object.entries(content || {}).map(([key,value])=><CopyValue key={key} label={key} value={value} />)}</div></section>)}</div></motion.div>;
+  let copy: any = result.platform_copy || {};
+  // Defensive normalization: unwrap a "platforms" wrapper and drop metadata keys.
+  if (copy.platforms && typeof copy.platforms === "object") copy = copy.platforms;
+  (["audience", "campaign", "goal", "tone", "source", "core_message", "cta"] as const)
+    .forEach(k => { delete copy[k]; });
+  return <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} style={{ marginBottom: "2rem" }}>
+    <div style={{ background: "linear-gradient(180deg,#181016,#0d0b0e)", border: "1px solid rgba(244,63,94,.3)", borderRadius: 20, padding: "1.6rem", marginBottom: "1rem" }}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:"1rem",alignItems:"center",flexWrap:"wrap"}}>
+        <div>
+          <span style={{color:"#fb7185",fontSize:".7rem",fontWeight:900}}>NOVA REPURPOSE CAMPAIGN</span>
+          <h2 style={{margin:".3rem 0",color:"#fff"}}>{result.campaign_name}</h2>
+          <p style={{margin:0,color:"#999",fontSize:".8rem"}}>{[result.audience, result.goal, result.tone].filter(Boolean).join(" · ")}</p>
+        </div>
+        <a href={`/tasks/${taskId}/repurpose-pdf`} download className="btn" style={{background:"#f43f5e",color:"#fff",fontWeight:900}}>Download Campaign PDF</a>
+      </div>
+      {(result.core_message || result.cta) && <div style={{marginTop:"1rem",padding:".8rem",borderLeft:"3px solid #f43f5e",background:"rgba(244,63,94,.06)",color:"#ddd",fontSize:".8rem"}}>{result.core_message || ""}{result.cta && <strong style={{display:"block",color:"#fb7185",marginTop:".3rem"}}>CTA: {result.cta}</strong>}</div>}
+      {(result.videos || []).length > 0 && (
+        <div style={{ marginTop: "1rem", display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
+          {(result.videos as any[]).map(v => (
+            <span key={v.platform} style={{ background: "rgba(244,63,94,.1)", border: "1px solid rgba(244,63,94,.25)", padding: ".3rem .7rem", borderRadius: 999, fontSize: ".72rem", fontWeight: 800, color: "#fb7185", textTransform: "capitalize" }}>{v.platform} · {v.aspect_ratio} · {v.duration}s</span>
+          ))}
+        </div>
+      )}
+    </div>
+    {Object.keys(copy).length > 0 && (
+      <h3 style={{ color:"#fff", fontSize:"1rem", margin:"0 0 .9rem" }}>Platform Content</h3>
+    )}
+    <div style={{display:"grid",gap:"1rem"}}>{Object.entries(copy).map(([platform, content])=>
+      <section key={platform} style={{background:"#121217",border:"1px solid rgba(255,255,255,.09)",borderRadius:16,padding:"1.2rem"}}>
+        <h3 style={{margin:"0 0 .8rem",color:"#fff",textTransform:"capitalize",display:"flex",alignItems:"center",gap:".5rem"}}>
+          {platform}
+          <span style={{fontSize:".62rem",color:"#fb7185",background:"rgba(244,63,94,.12)",padding:".15rem .5rem",borderRadius:999,textTransform:"uppercase",letterSpacing:".05em"}}>Copy-ready</span>
+        </h3>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:".7rem",alignItems:"start"}}>{Object.entries((content as any)||{}).map(([key,value])=><CopyValue key={key} label={key} value={value} />)}</div>
+      </section>
+    )}</div>
+  </motion.div>;
 }
 
 export default function TaskPage() {
