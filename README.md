@@ -185,8 +185,11 @@ Distributed under the MIT License. See `LICENSE` for more information.
 NovaClip is engineered as a zero-vendor-lockin application. Configure your API keys directly inside the in-app **Settings Modal (⚙️)**:
 
 - **Google Gemini API Key**: [Get Key at Google AI Studio](https://ai.google.dev)
-- **Deepgram API Key**: [Get Key at Deepgram Console](https://console.deepgram.com)
 - **OpenRouter API Key**: [Get Key at OpenRouter](https://openrouter.ai/keys)
+- **Deepgram API Key**: [Get Key at Deepgram Console](https://console.deepgram.com)
+- **ElevenLabs API Key**: [Get Key at ElevenLabs](https://elevenlabs.io/app/settings/api-keys)
+- **Pexels API Key**: [Get Key at Pexels](https://www.pexels.com/api/)
+- **Pixabay API Key**: [Get Key at Pixabay](https://pixabay.com/api/docs/)
 - **WaveSpeed API Key**: [Get Key at WaveSpeed](https://platform.wavespeed.ai/) (required for AI B-Roll Seedance clips & Lyria music)
 
 ---
