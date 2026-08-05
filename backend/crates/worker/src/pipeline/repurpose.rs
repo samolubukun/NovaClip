@@ -49,7 +49,7 @@ pub async fn process_repurpose_task(db: &DbPool, cfg: &PipelineConfig, output_di
     let copy = if written_platforms.is_empty() {
         json!({})
     } else {
-        generate_campaign_copy(cfg, &payload, &transcript, &source_title, &written_platforms).await?
+        normalize_copy(generate_campaign_copy(cfg, &payload, &transcript, &source_title, &written_platforms).await?)
     };
 
     emit_progress(db, task_id, 50, "Creating platform video versions...", "processing").await;
@@ -95,13 +95,40 @@ pub async fn process_repurpose_task(db: &DbPool, cfg: &PipelineConfig, output_di
 
 async fn resolve_source(db: &DbPool, cfg: &PipelineConfig, payload: &RepurposePayload) -> Result<(PathBuf, String, String)> {
     if let Some(source_task_id) = payload.source_task_id.as_deref() {
+        // Use the completed task's ORIGINAL source video and full transcript,
+        // not its generated clips.
         let row: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT file_path, transcript_text, hook_title FROM generated_clips WHERE task_id = ? ORDER BY clip_order ASC LIMIT 1"
+            "SELECT source_url, source_title, transcript_cache FROM tasks WHERE id = ?"
         ).bind(source_task_id).fetch_optional(db).await?;
-        if let Some((path, transcript, title)) = row {
-            return Ok((PathBuf::from(path), transcript.unwrap_or_default(), title.unwrap_or_else(|| "Completed NovaClip task".into())));
+        let (source_url, title, transcript_cache) = row
+            .ok_or_else(|| anyhow::anyhow!("Selected source task not found"))?;
+
+        let video = if source_url.starts_with("upload://") {
+            resolve_upload_path(&source_url, &cfg.temp_dir)
+        } else {
+            download_youtube(&source_url, &cfg.temp_dir).await?
+        };
+        if !video.exists() {
+            anyhow::bail!("Original source video not found on disk: {}", video.display());
         }
-        anyhow::bail!("Selected source task has no generated video");
+
+        // Prefer the cached full-source transcript to avoid re-transcribing.
+        let transcript = match transcript_cache {
+            Some(t) if !t.trim().is_empty() => t,
+            _ => {
+                let audio = extract_audio(&video, &cfg.temp_dir).await?;
+                let tr = transcribe_audio(
+                    &audio, &cfg.stt_provider, &cfg.deepgram_api_key,
+                    Path::new(&cfg.vosk_model_path), Path::new(&cfg.whisper_model_path),
+                    Path::new(&cfg.pyannote_segmentation_model_path), Path::new(&cfg.pyannote_embedding_model_path),
+                ).await?;
+                let _ = tokio::fs::remove_file(audio).await;
+                build_transcript_for_prompt(&tr)
+            }
+        };
+        let title = title.filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| "Completed NovaClip source".into());
+        return Ok((video, transcript, title));
     }
 
     let source_url = payload.source_url.as_deref().unwrap_or(&cfg.url);
@@ -122,11 +149,21 @@ async fn resolve_source(db: &DbPool, cfg: &PipelineConfig, payload: &RepurposePa
 
 async fn render_variant(source: &Path, output: &Path, aspect_ratio: &str, duration: f64) -> Result<()> {
     let (w, h) = output_dimensions(aspect_ratio);
-    let filter = format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1");
+    // Fill the target frame: scale source to fully cover as a blurred background,
+    // then overlay the fit-to-frame source centered on top. This avoids letterbox
+    // black bars and makes vertical sources read correctly in 16:9 / 1:1 frames.
+    let filter = format!(
+        "[0:v]split=2[bg][fg];\
+         [bg]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=20:4,setsar=1[bgb];\
+         [fg]scale={w}:{h}:force_original_aspect_ratio=decrease,setsar=1[fgf];\
+         [bgb][fgf]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[vout]"
+    );
     let status = Command::new("ffmpeg").args([
         "-y", "-i", source.to_str().unwrap_or_default(), "-t", &format!("{duration:.3}"),
-        "-vf", &filter, "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", output.to_str().unwrap_or_default(),
+        "-filter_complex", &filter, "-map", "[vout]", "-map", "0:a:0?",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest",
+        output.to_str().unwrap_or_default(),
     ]).status().await.context("Failed to render repurpose variant")?;
     if !status.success() { anyhow::bail!("FFmpeg failed to create repurpose variant"); }
     Ok(())
@@ -148,7 +185,8 @@ async fn insert_clip(db: &DbPool, task_id: &str, order: i32, filename: &str, pat
 
 async fn generate_campaign_copy(cfg: &PipelineConfig, payload: &RepurposePayload, transcript: &str, source_title: &str, platforms: &[&PlatformRequest]) -> Result<Value> {
     let ids: Vec<&str> = platforms.iter().map(|p| p.id.as_str()).collect();
-    let prompt = format!(r#"Create a platform-specific content campaign as strict JSON only.
+    let prompt = format!(r#"You are a senior professional content strategist and copywriter. Produce complete, publish-ready, human-sounding content for each selected platform, varying in length and structure to meet each platform's industry-standard best practices.
+
 Campaign: {}
 Source: {}
 Audience: {}
@@ -159,30 +197,72 @@ CTA: {}
 Instructions: {}
 Platforms: {}
 
-Write substantial, publish-ready content rather than short summaries. Preserve the source's facts and make each platform version meaningfully different.
+Return a strict JSON object whose top-level keys are EXACTLY the lowercase platform ids: {}. Do NOT wrap them under "platforms" or any other key, and do not include campaign/audience/goal/tone/source metadata keys in the output object.
 
-For every selected platform return:
-- 5 distinct hooks, each one or two complete sentences.
-- A primary CTA and 2 CTA alternatives.
-- 8-15 relevant hashtags or tags where the platform supports them.
-- A short strategy note explaining the recommended angle, format, and posting approach.
+WRITING STANDARDS (apply to every platform):
+- Write like a talented human marketer, never like AI. Use varied sentence length, concrete detail, and a natural rhythm.
+- Follow standard professional grammar, spelling, and punctuation.
+- Content must be sufficiently long and complete. Do not summarize or truncate; deliver the full publish-ready piece.
+- Give each platform meaningfully different content and angles derived from the source facts below.
+- For every selected platform also include a "strategy_note" field (one paragraph) explaining the best posting approach.
 
-Platform requirements:
-- TikTok: caption of 120-220 words, 5 hooks, hashtags, CTA, on-screen text ideas, and a pinned-comment suggestion.
-- Instagram: reel_caption of 180-300 words, short_caption of 60-100 words, 10-15 hashtags, story_sequence with 3-5 slides, carousel_outline with 5-8 slides, and CTA.
-- YouTube: 8 title options, description of 300-500 words, short_description, 10-15 tags, 5 thumbnail_text options, chapter suggestions, and pinned_comment.
-- LinkedIn: professional_post of 350-600 words, short_post of 120-200 words, 5 opening hooks, CTA, and 3 discussion questions.
-- X: 5 standalone posts, a thread of 6-10 complete posts, 5 quote options, hashtags, and CTA.
-- Newsletter: 8 subject_lines, 5 preview_text options, body of 600-1000 words with section headings, CTA section, and a short version of 250-400 words.
-- Blog: 8 headlines, SEO description, detailed outline with 6-10 sections, introduction of 250-400 words, key talking points for every section, conclusion, and CTA.
+FORMATTING (strict):
+- Use ONLY plain ASCII characters. No emojis, no em-dashes (—), no smart/curly quotes, no ellipsis characters, no exotic unicode symbols. Use straight quotes and regular hyphens.
+- Arrays are plain lists of strings. Never use Markdown code fences or JSON wrappers in output.
 
-Return every platform under its lowercase platform id. Return strict JSON only and do not omit requested fields.
+PLATFORM SPECIFICS (follow these industry-standard lengths and structures):
+- tiktok: "caption" (120-220 words), "hooks" (5), "hashtags" (8-15), "cta", "onscreen_text" (3), "pinned_comment", "strategy_note".
+- instagram: "reel_caption" (180-300 words), "short_caption" (60-100 words), "hooks" (5), "hashtags" (10-15), "story_sequence" (3-5 short lines), "carousel_outline" (5-8 headings), "cta", "strategy_note".
+- youtube: "titles" (8), "description" (300-500 words), "short_description" (1-2 sentences), "tags" (10-15), "thumbnail_text" (5), "chapters" (list of timestamp headings), "pinned_comment", "cta", "strategy_note".
+- linkedin: "post" (350-600 words), "short_post" (120-200 words), "hooks" (5), "discussion_questions" (3), "cta", "hashtags" (5), "strategy_note".
+- x: "tweets" (5 standalone posts), "thread" (6-10 complete posts), "hashtags", "cta", "strategy_note".
+- newsletter: "subject_lines" (8), "preview_text" (5), "body" (600-1000 words with section headings), "short_version" (250-400 words), "cta", "strategy_note".
+- blog: "headlines" (8), "seo_description", "introduction" (250-400 words), "outline" (6-10 section headings), "talking_points" (map of each section to key bullet points), "conclusion" (200-300 words), "cta", "strategy_note".
+
+Return strict JSON only. Provide every platform and every listed field; omit nothing.
 
 Transcript:
 {}"#,
         payload.campaign_name, source_title, payload.audience, payload.goal, payload.tone,
-        payload.core_message, payload.cta, payload.instructions, ids.join(", "), transcript);
+        payload.core_message, payload.cta, payload.instructions, ids.join(", "), ids.join(", "), transcript);
     call_json_model(cfg, &prompt).await
+}
+
+/// Normalize the model output so `platform_copy` is a flat map of platform_id -> content,
+/// stripping any metadata wrapper the model may have returned, and sanitizing text.
+fn normalize_copy(value: Value) -> Value {
+    let mut obj = match value {
+        Value::Object(map) => map,
+        _ => return value,
+    };
+    if let Some(inner) = obj.remove("platforms").and_then(|v| v.as_object().cloned()) {
+        obj = inner;
+    }
+    for meta in ["audience", "campaign", "goal", "tone", "source", "core_message", "cta"] {
+        obj.remove(meta);
+    }
+    Value::Object(obj.into_iter().map(|(k, v)| (k, sanitize_value(v))).collect())
+}
+
+/// Recursively strip non-ASCII characters from strings so no emojis, smart quotes,
+/// em-dashes, or other exotic unicode leak into the generated copy.
+fn sanitize_value(value: Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(items.into_iter().map(sanitize_value).collect()),
+        Value::Object(map) => Value::Object(map.into_iter().map(|(k, v)| (k, sanitize_value(v))).collect()),
+        Value::String(s) => Value::String(sanitize_text(&s)),
+        other => other,
+    }
+}
+
+fn sanitize_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii() || c.is_whitespace() {
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
 }
 
 async fn call_json_model(cfg: &PipelineConfig, prompt: &str) -> Result<Value> {
