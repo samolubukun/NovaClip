@@ -184,6 +184,30 @@ export default function Repurpose() {
           <button disabled={loading} onClick={submit} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: ".5rem", padding: ".9rem 1.5rem", marginTop: ".9rem", border: 0, borderRadius: 12, background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 900, fontSize: ".95rem", cursor: "pointer", boxShadow: "0 0 24px rgba(244,63,94,.25)", transition: "opacity .15s", opacity: loading ? .7 : 1 }}>{loading ? <><div className="spinner" style={{ borderColor: "#fff", borderTopColor: "transparent" }} /><span>Creating campaign...</span></> : <><Megaphone size={20} /><span>Generate Repurpose Campaign</span></>}</button>
         </section>
       </motion.div>
+
+      {/* Nova Repurpose Footer */}
+      <section style={{ borderTop: "1px solid rgba(244,63,94,0.18)", background: "#0b0b0e", padding: "2.2rem 0", marginTop: "2.5rem" }}>
+        <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "0 1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "1.5rem", textAlign: "center" }}>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#f43f5e", margin: 0 }}>ONE SOURCE</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Upload, past job, YouTube, or link</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#fb7185", margin: 0 }}>MULTI PLATFORM</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>YouTube, TikTok, X, LinkedIn & IG</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#fda4af", margin: 0 }}>VIDEO + COPY</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Aspect cuts plus platform posts</p>
+            </div>
+            <div>
+              <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color: "#fecdd3", margin: 0 }}>PDF CAMPAIGN</h4>
+              <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>Export full marketing packet</p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
