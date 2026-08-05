@@ -11,6 +11,7 @@ pub mod translate;
 pub mod studio_llm;
 pub mod tts;
 pub mod scraper;
+pub mod wavespeed;
 pub mod nova_edit;
 pub mod repurpose;
 
