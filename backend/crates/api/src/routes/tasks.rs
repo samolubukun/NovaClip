@@ -110,6 +110,8 @@ pub struct StudioApiKeys {
     pub pexels_key: Option<String>,
     #[serde(default)]
     pub pixabay_key: Option<String>,
+    #[serde(default)]
+    pub wavespeed_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +135,8 @@ pub struct StudioPayload {
     pub subtitle_style: Option<String>,
     #[serde(default)]
     pub bg_music: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
     #[serde(default)]
     pub api_keys: Option<StudioApiKeys>,
 }
