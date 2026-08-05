@@ -137,7 +137,7 @@ export default function NovaEdit() {
           Raw Footage In, <span style={{ color: "#22d3ee", textShadow: "0 0 35px rgba(34,211,238,0.3)" }}>Polished Edit Out</span>
         </h1>
         <p style={{ fontSize: "1.05rem", color: "#a1a1aa", maxWidth: "700px", margin: "0 auto" }}>
-          An ensemble of AI agents, <strong style={{ color: "#fff" }}>Director</strong>, <strong style={{ color: "#fff" }}>Editor</strong>, and <strong style={{ color: "#fff" }}>Reviewer</strong>, turns raw clips plus a creative brief into a finished video. Review the AI's edit plan, approve it, and let the agents render, score, and self-improve.
+          AI agents (<strong style={{ color: "#fff" }}>Director</strong>, <strong style={{ color: "#fff" }}>Editor</strong>, <strong style={{ color: "#fff" }}>Reviewer</strong>) turn raw clips and a brief into a finished video. Review the plan, approve, and watch them render, score, and improve.
         </p>
       </div>
 
