@@ -21,7 +21,7 @@ type PlatformState = Record<string, { selected: boolean; video: boolean; written
 export default function Repurpose() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [sourceMode, setSourceMode] = useState<"task" | "upload" | "youtube">("task");
+  const [sourceMode, setSourceMode] = useState<"task" | "upload" | "youtube">("upload");
   const [tasks, setTasks] = useState<any[]>([]);
   const [sourceTaskId, setSourceTaskId] = useState("");
   const [file, setFile] = useState<File | null>(null);
