@@ -14,6 +14,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [elevenlabsKey, setElevenlabsKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
+  const [wavespeedKey, setWavespeedKey] = useState("");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setElevenlabsKey(localStorage.getItem("novaclip_elevenlabs_key") || "");
       setPexelsKey(localStorage.getItem("novaclip_pexels_key") || "");
       setPixabayKey(localStorage.getItem("novaclip_pixabay_key") || "");
+      setWavespeedKey(localStorage.getItem("novaclip_wavespeed_key") || "");
       setSaved(false);
     }
   }, [isOpen]);
@@ -39,6 +41,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     localStorage.setItem("novaclip_elevenlabs_key", elevenlabsKey.trim());
     localStorage.setItem("novaclip_pexels_key", pexelsKey.trim());
     localStorage.setItem("novaclip_pixabay_key", pixabayKey.trim());
+    localStorage.setItem("novaclip_wavespeed_key", wavespeedKey.trim());
     setSaved(true);
     setTimeout(() => {
       onClose();
@@ -203,6 +206,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 style={{ width: "100%", fontFamily: "monospace", fontSize: "0.78rem" }}
               />
             </div>
+          </div>
+
+          {/* WaveSpeed API Key */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
+                <Key size={14} color="var(--accent, #FFE000)" /> WaveSpeed API Key
+              </label>
+              <a href="https://www.wavespeed.ai" target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.72rem", color: "var(--accent)", textDecoration: "underline" }}>Get Key ↗</a>
+            </div>
+            <input
+              type="password"
+              className="input"
+              placeholder="WaveSpeed key..."
+              value={wavespeedKey}
+              onChange={(e) => setWavespeedKey(e.target.value)}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem" }}
+            />
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for AI B-Roll clips (bytedance/seedance-v1-pro-fast) & AI background music (Lyria) in Studio</span>
           </div>
         </div>
 
