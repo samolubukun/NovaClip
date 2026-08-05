@@ -17,7 +17,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 [![Gemini AI](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter_Free_Models-6566F1?style=for-the-badge&logo=openai&logoColor=white)](https://openrouter.ai/)
 [![Deepgram](https://img.shields.io/badge/Deepgram_Nova--3-13EF95?style=for-the-badge&logo=deepgram&logoColor=black)](https://deepgram.com/)
-[![WaveSpeed](https://img.shields.io/badge/WaveSpeed_Seedance-6B3FBB?style=for-the-badge&logo=wavespeed&logoColor=white)](https://wavespeed.ai/)
+[![WaveSpeed](https://img.shields.io/badge/WaveSpeed-6B3FBB?style=for-the-badge&logo=wavespeed&logoColor=white)](https://wavespeed.ai/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
