@@ -186,31 +186,6 @@ export default function Repurpose() {
 
           {/* RIGHT COLUMN: AI Brain & Sidebar */}
           <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }} style={{ display: "grid", gap: "1.25rem", position: "sticky", top: "2rem" }}>
-            {/* AI Engine & Generate Button */}
-            <section style={cardStyle}>
-              <h3 style={headingStyle}><Wand2 size={17} color="#fb7185" /> AI Engine & Action</h3>
-              <div style={{ display: "grid", gap: "0.85rem", marginBottom: "1rem" }}>
-                <div>
-                  <div style={labelStyle}>AI provider</div>
-                  <select value={provider} onChange={e => { const p=e.target.value as LlmProvider; setProvider(p); setModel(p==="gemini"?"gemini-3.1-flash-lite":"openrouter/free"); }} style={inputStyle}>
-                    <option value="gemini">Gemini</option>
-                    <option value="openrouter">OpenRouter</option>
-                  </select>
-                </div>
-                <div>
-                  <div style={labelStyle}>Model</div>
-                  <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}>
-                    {(provider==="gemini"?GEMINI_MODELS:OPENROUTER_MODELS).map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
-                  </select>
-                  {model === "custom" && <input value={customModel} onChange={e=>setCustomModel(e.target.value)} placeholder="provider/model-id" style={{...inputStyle,marginTop:".6rem"}} />}
-                </div>
-              </div>
-
-              <button disabled={loading} onClick={submit} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: ".5rem", padding: ".9rem 1.5rem", border: 0, borderRadius: 12, background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 900, fontSize: ".95rem", cursor: "pointer", boxShadow: "0 0 24px rgba(244,63,94,.25)", transition: "opacity .15s", opacity: loading ? .7 : 1 }}>
-                {loading ? <><div className="spinner" style={{ borderColor: "#fff", borderTopColor: "transparent" }} /><span>Creating campaign...</span></> : <><Megaphone size={20} /><span>Generate Repurpose Campaign</span></>}
-              </button>
-            </section>
-
             {/* Sidebar "How Repurpose Works" */}
             <div style={{ background: "#0c0c0f", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "20px", padding: "1.25rem" }}>
               <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#fff", marginBottom: "0.85rem", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -235,6 +210,31 @@ export default function Repurpose() {
                 ))}
               </div>
             </div>
+
+            {/* AI Engine & Generate Button */}
+            <section style={cardStyle}>
+              <h3 style={headingStyle}><Wand2 size={17} color="#fb7185" /> AI Engine & Action</h3>
+              <div style={{ display: "grid", gap: "0.85rem", marginBottom: "1rem" }}>
+                <div>
+                  <div style={labelStyle}>AI provider</div>
+                  <select value={provider} onChange={e => { const p=e.target.value as LlmProvider; setProvider(p); setModel(p==="gemini"?"gemini-3.1-flash-lite":"openrouter/free"); }} style={inputStyle}>
+                    <option value="gemini">Gemini</option>
+                    <option value="openrouter">OpenRouter</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={labelStyle}>Model</div>
+                  <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}>
+                    {(provider==="gemini"?GEMINI_MODELS:OPENROUTER_MODELS).map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                  {model === "custom" && <input value={customModel} onChange={e=>setCustomModel(e.target.value)} placeholder="provider/model-id" style={{...inputStyle,marginTop:".6rem"}} />}
+                </div>
+              </div>
+
+              <button disabled={loading} onClick={submit} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: ".5rem", padding: ".9rem 1.5rem", border: 0, borderRadius: 12, background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 900, fontSize: ".95rem", cursor: "pointer", boxShadow: "0 0 24px rgba(244,63,94,.25)", transition: "opacity .15s", opacity: loading ? .7 : 1 }}>
+                {loading ? <><div className="spinner" style={{ borderColor: "#fff", borderTopColor: "transparent" }} /><span>Creating campaign...</span></> : <><Megaphone size={20} /><span>Generate Repurpose Campaign</span></>}
+              </button>
+            </section>
           </motion.div>
         </div>
       </div>
