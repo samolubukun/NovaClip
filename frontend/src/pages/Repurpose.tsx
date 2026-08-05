@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Check, ChevronDown, ChevronUp, FileText, Link2, Megaphone, Upload, Video } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, FileText, Link2, Megaphone, Sparkles, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { GEMINI_MODELS, OPENROUTER_MODELS, type LlmProvider } from "../lib/llmModels";
@@ -170,7 +170,7 @@ export default function Repurpose() {
         </section>
 
         <section style={cardStyle}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr) auto", gap: ".75rem", alignItems: "end" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: ".75rem", alignItems: "end" }}>
             <div>
               <div style={labelStyle}>AI provider</div>
               <select value={provider} onChange={e => { const p=e.target.value as LlmProvider; setProvider(p); setModel(p==="gemini"?"gemini-3.1-flash-lite":"openrouter/free"); }} style={inputStyle}><option value="gemini">Gemini</option><option value="openrouter">OpenRouter</option></select>
@@ -178,10 +178,10 @@ export default function Repurpose() {
             <div>
               <div style={labelStyle}>Model</div>
               <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}>{(provider==="gemini"?GEMINI_MODELS:OPENROUTER_MODELS).map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select>
-              {model === "custom" && <input value={customModel} onChange={e=>setCustomModel(e.target.value)} placeholder="provider/model-id" style={{...inputStyle,marginTop:".6rem"}} />}
+{model === "custom" && <input value={customModel} onChange={e=>setCustomModel(e.target.value)} placeholder="provider/model-id" style={{...inputStyle,marginTop:".6rem"}} />}
             </div>
-            <button disabled={loading} onClick={submit} style={{ padding: ".8rem 1.5rem", border: 0, borderRadius: 12, background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 900, cursor: "pointer", boxShadow: "0 0 24px rgba(244,63,94,.25)", whiteSpace: "nowrap" }}>{loading ? "Creating campaign..." : "Generate Repurpose Campaign"}</button>
           </div>
+          <button disabled={loading} onClick={submit} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: ".5rem", padding: ".9rem 1.5rem", marginTop: ".9rem", border: 0, borderRadius: 12, background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 900, fontSize: ".95rem", cursor: "pointer", boxShadow: "0 0 24px rgba(244,63,94,.25)", transition: "opacity .15s", opacity: loading ? .7 : 1 }}>{loading ? <><div className="spinner" style={{ borderColor: "#fff", borderTopColor: "transparent" }} /><span>Creating campaign...</span></> : <><Sparkles size={20} /><span>Generate Repurpose Campaign</span></>}</button>
         </section>
       </motion.div>
     </div>
