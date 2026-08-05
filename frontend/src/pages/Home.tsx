@@ -1052,7 +1052,7 @@ export default function Home() {
                     {loading ? (
                       <><div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /><span>Processing...</span></>
                     ) : (
-                      <><Sparkles size={20} /><span>Generate Viral Clips Now</span></>
+                      <><Zap size={20} /><span>Generate Viral Clips Now</span></>
                     )}
                   </button>
                 </>
