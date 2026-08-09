@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { History, Settings, Github, Scissors, Film, Wand2, Megaphone } from "lucide-react";
+import { History, Settings, Github, Scissors, Film, Wand2, Megaphone, Youtube } from "lucide-react";
 import { SettingsModal } from "./SettingsModal";
 
-type Mode = "clipper" | "studio" | "novaedit" | "repurpose";
+type Mode = "clipper" | "studio" | "novaedit" | "repurpose" | "youtube";
 
 export default function Nav() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -13,11 +13,14 @@ export default function Nav() {
     if (location.pathname === "/studio") return "studio";
     if (location.pathname === "/novaedit") return "novaedit";
     if (location.pathname === "/repurpose") return "repurpose";
+    if (location.pathname === "/youtube") return "youtube";
     return "clipper";
   });
-  const [studioBroll, setStudioBroll] = useState<"stock" | "ai">(() => {
+  const [studioBroll, setStudioBroll] = useState<"stock" | "ai" | "ai-shorts">(() => {
     const v = sessionStorage.getItem("nova_studio_mode");
-    return v === "ai" ? "ai" : "stock";
+    if (v === "ai") return "ai";
+    if (v === "ai-shorts") return "ai-shorts";
+    return "stock";
   });
 
   useEffect(() => {
@@ -28,6 +31,8 @@ export default function Nav() {
       setMode("novaedit");
       } else if (location.pathname === "/repurpose") {
       setMode("repurpose");
+      } else if (location.pathname === "/youtube") {
+      setMode("youtube");
       } else if (location.pathname.startsWith("/task/")) {
       const t = sessionStorage.getItem("nova_last_task_type");
       setMode(t === "studio" ? "studio" : t === "agentic" ? "novaedit" : t === "repurpose" ? "repurpose" : "clipper");
@@ -37,7 +42,9 @@ export default function Nav() {
     };
     const syncStudioBroll = () => {
       const v = sessionStorage.getItem("nova_studio_mode");
-      setStudioBroll(v === "ai" ? "ai" : "stock");
+      if (v === "ai") setStudioBroll("ai");
+      else if (v === "ai-shorts") setStudioBroll("ai-shorts");
+      else setStudioBroll("stock");
     };
 
     syncMode();
@@ -55,8 +62,9 @@ export default function Nav() {
     const colors = {
       clipper: { background: "var(--accent)", color: "#000", glow: "rgba(255,224,0,0.22)" },
       novaedit: { background: "#22d3ee", color: "#001014", glow: "rgba(34,211,238,0.22)" },
-      studio: studioBroll === "ai" ? { background: "#d946ef", color: "#fff", glow: "rgba(217,70,239,0.28)" } : { background: "#8b5cf6", color: "#fff", glow: "rgba(139,92,246,0.28)" },
+      studio: studioBroll === "ai" ? { background: "#d946ef", color: "#fff", glow: "rgba(217,70,239,0.28)" } : studioBroll === "ai-shorts" ? { background: "#a855f7", color: "#fff", glow: "rgba(168,85,247,0.28)" } : { background: "#8b5cf6", color: "#fff", glow: "rgba(139,92,246,0.28)" },
       repurpose: { background: "#f43f5e", color: "#fff", glow: "rgba(244,63,94,0.28)" },
+      youtube: { background: "#ef4444", color: "#fff", glow: "rgba(239,68,68,0.35)" },
     }[tab];
 
     return {
@@ -108,6 +116,9 @@ export default function Nav() {
               </Link>
               <Link to="/repurpose" style={tabStyle("repurpose")}>
                 <Megaphone size={14} /> Nova Repurpose
+              </Link>
+              <Link to="/youtube" style={tabStyle("youtube")}>
+                <Youtube size={14} /> YouTube Studio
               </Link>
             </div>
           </div>
