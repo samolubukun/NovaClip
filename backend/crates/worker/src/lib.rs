@@ -183,6 +183,7 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
 
     if cfg.source_type == "studio" {
         process_studio_task(&db, &cfg, &output_dir, &task_id_str).await?;
+        publish_studio_video_if_requested(&db, &cfg, &output_dir, &task_id_str).await;
     } else {
         process_standard_task(&db, &cfg, &output_dir, &task_id_str).await?;
     }
@@ -196,6 +197,73 @@ async fn process_task(db: DbPool, task_id: Uuid) -> anyhow::Result<()> {
 
     info!("Task {} completed", task_id);
     Ok(())
+}
+
+/// After a studio task finishes, publish the final video to YouTube via
+/// Upload-Post when the AI Shorts payload requests it (shorts_payload.publish).
+async fn publish_studio_video_if_requested(
+    db: &DbPool,
+    cfg: &PipelineConfig,
+    output_dir: &Path,
+    task_id_str: &str,
+) {
+    let Some(payload) = cfg.studio_payload.as_ref() else { return };
+    if payload.get("mode").and_then(|v| v.as_str()) != Some("ai-shorts") {
+        return;
+    }
+    let shorts = payload.get("shorts_payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+    if shorts.get("publish").and_then(|v| v.as_bool()).unwrap_or(false) != true {
+        return;
+    }
+    let Some(api_key) = payload
+        .pointer("/api_keys/uploadpost_key")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+    else {
+        warn!("[Publish] AI Shorts auto-publish requested but no Upload-Post API key was provided");
+        return;
+    };
+
+    let video_path = output_dir.join("final_video.mp4");
+    if !video_path.exists() {
+        warn!("[Publish] Final video missing at {} — skipping auto-publish", video_path.display());
+        return;
+    }
+
+    let script = payload.get("script").and_then(|v| v.as_str()).unwrap_or("");
+    let product_desc = shorts.get("product_description").and_then(|v| v.as_str()).unwrap_or("");
+    let title = product_desc.split('\n').next().unwrap_or(script).trim();
+    let title = if title.is_empty() { "AI Short".to_string() } else { title.chars().take(70).collect() };
+    let description = format!("{}\n\n#shorts #ai #product", script.trim());
+
+    let profile = shorts
+        .get("uploadpost_profile")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+
+    let username = match profile {
+        Some(p) => p,
+        None => match pipeline::uploadpost::resolve_profile(api_key).await {
+            Ok(u) => u,
+            Err(e) => {
+                warn!("[Publish] Failed to resolve Upload-Post profile: {}", e);
+                return;
+            }
+        },
+    };
+
+    emit_progress(db, task_id_str, 96, "Publishing to YouTube (Upload-Post)...", "processing").await;
+    info!("[Publish] Uploading {} to YouTube via Upload-Post as '{}'", video_path.display(), username);
+    match pipeline::uploadpost::publish_video(api_key, &username, &video_path, &title, &description, &["youtube".to_string()]).await {
+        Ok(body) => {
+            emit_progress(db, task_id_str, 99, "Published to YouTube!", "processing").await;
+            info!("[Publish] YouTube publish submitted successfully: {}", body);
+        }
+        Err(e) => {
+            warn!("[Publish] Upload-Post publish failed: {}", e);
+        }
+    }
 }
 
 /// Standard pipeline: download video, transcribe, analyze, extract clips
@@ -566,8 +634,8 @@ async fn process_studio_task(
         .or_else(|| std::env::var("WAVESPEED_API_KEY").ok().filter(|s| !s.is_empty()))
         .unwrap_or_default();
 
-    if mode == "ai" && wavespeed_key.is_empty() {
-        anyhow::bail!("AI B-Roll mode requires a WaveSpeed API key. Add it in Settings.");
+    if (mode == "ai" || mode == "ai-shorts") && wavespeed_key.is_empty() {
+        anyhow::bail!("{} mode requires a WaveSpeed API key. Add it in Settings.", if mode == "ai" { "AI B-Roll" } else { "AI Shorts" });
     }
 
     let (out_width, out_height) = output_dimensions(&cfg.aspect_ratio);
@@ -774,6 +842,166 @@ async fn process_studio_task(
             full_audio_path.clone()
         };
         // Re-run the common assembly/render path with the AI media
+        return finish_studio_render(
+            db, cfg, output_dir, task_id_str,
+            items.as_slice(),
+            &word_timestamps,
+            &sentence_word_ranges,
+            &media_paths,
+            actual_total,
+            &mixed_full_audio,
+            &caption_style,
+            out_width, out_height,
+            total_audio_dur,
+            vibe,
+        )
+        .await
+        .map(|_| ());
+    } else if mode == "ai-shorts" {
+        // AI Shorts: Flux 2 Pro actor portrait → lip-synced talking head →
+        // Seedance B-roll → composite. The talking head anchors the hook scene
+        // (scene 0), B-roll covers the remaining sentences.
+        let shorts = payload.get("shorts_payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+        let cost_mode = shorts["cost_mode"].as_str().unwrap_or("low");
+        let actor_description = shorts["actor_description"].as_str().unwrap_or("");
+        let product_description = shorts["product_description"].as_str().unwrap_or("");
+        let actor_audio_url = shorts["actor_audio_url"].as_str()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("WAVESPEED_AUDIO_URL").ok().filter(|s| !s.trim().is_empty()));
+        let audio_url = actor_audio_url.as_deref();
+
+        let portrait_prompt = if !actor_description.trim().is_empty() {
+            format!(
+                "{}. Front-facing waist-up portrait, eyes on camera, mouth relaxed and visible, photorealistic, professional studio lighting, clean blurred background, 9:16 vertical.",
+                actor_description.trim()
+            )
+        } else if !product_description.trim().is_empty() {
+            format!(
+                "Professional UGC creator portrait, front-facing waist-up, eyes on camera, mouth relaxed and visible, promoting: {}. Photorealistic, studio lighting, clean blurred background, 9:16 vertical.",
+                product_description.trim()
+            )
+        } else {
+            "Professional UGC creator portrait, front-facing waist-up, eyes on camera, mouth relaxed and visible, friendly confident expression, photorealistic, studio lighting, clean blurred background, 9:16 vertical.".to_string()
+        };
+
+        let hook_text = items.first().map(|i| i.sentence.clone()).unwrap_or_else(|| full_script_joined.clone());
+        let hook_dur = sentence_word_ranges.first()
+            .map(|r| (r.end_time - r.start_time).clamp(5.0, 15.0))
+            .unwrap_or(8.0) as i32;
+
+        // Premium InfiniteTalk lip-sync needs a hosted audio URL. If the caller
+        // didn't provide one, synthesize the hook audio locally with the same TTS
+        // voice and host it temporarily so the actor's lips match the voiceover.
+        let hook_audio_path = if cost_mode == "premium" && audio_url.is_none() {
+            match tts.synthesize(&hook_text, 0, tts_provider, voice).await {
+                Ok(p) => {
+                    temp_files.push(p.clone());
+                    Some(p)
+                }
+                Err(e) => {
+                    warn!("Hook audio TTS failed ({}): premium talking head will use AI Talking Photos text sync", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        emit_progress(db, task_id_str, 30, "Generating AI actor portrait (Flux 2 Pro)...", "processing").await;
+        let shorts_media_dir = output_dir.join("shorts_media");
+        let actor = pipeline::wavespeed::generate_ai_actor(
+            &wavespeed_key,
+            &portrait_prompt,
+            &hook_text,
+            hook_dur,
+            audio_url,
+            hook_audio_path.as_deref(),
+            cost_mode == "premium",
+            &shorts_media_dir,
+        )
+        .await;
+
+        let mut media_paths: Vec<PathBuf> = Vec::new();
+        match actor {
+            Ok((_portrait, talking)) => {
+                info!("AI actor talking head generated: {:?}", talking);
+                media_paths.push(talking.clone());
+                temp_files.push(talking);
+            }
+            Err(e) => {
+                warn!("AI actor generation failed ({}): {} — continuing with B-roll only", cost_mode, e);
+            }
+        }
+
+        // B-roll: Seedance clips per sentence (Pexels fallback), same as AI mode
+        let sentences: Vec<String> = items.iter().map(|i| i.sentence.clone()).collect();
+        let keywords: Vec<String> = items.iter().map(|i| i.keyword.clone()).collect();
+        emit_progress(db, task_id_str, 45, "Writing B-roll prompts...", "processing").await;
+        let prompts = processor
+            .generate_ai_clip_prompts(&full_script_joined, &sentences, &keywords.first().cloned().unwrap_or_default())
+            .await;
+        let clip_sec = std::env::var("WAVESPEED_VIDEO_DURATION")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(5);
+        let ai_media_dir = output_dir.join("ai_media");
+        emit_progress(db, task_id_str, 50, "Generating B-roll clips (Seedance)...", "processing").await;
+        let ai_paths = pipeline::wavespeed::generate_ai_media_paths(
+            wavespeed_key.clone(),
+            prompts.clone(),
+            cfg.aspect_ratio.clone(),
+            clip_sec,
+            ai_media_dir,
+            pexels_key.to_string(),
+            keywords.clone(),
+        )
+        .await;
+        for (i, p) in ai_paths.iter().enumerate() {
+            if let Some(p) = p {
+                temp_files.push(p.clone());
+                media_paths.push(p.clone());
+            } else {
+                warn!("B-roll clip {} could not be generated — skipping", i + 1);
+            }
+        }
+
+        if media_paths.is_empty() {
+            anyhow::bail!("AI Shorts: all media generation attempts failed — check your WaveSpeed key and model quota");
+        }
+        let actual_total = media_paths.len().min(items.len());
+
+        // BGM: Lyria (AI-generated) when requested
+        let full_bgm = if bg_music != "none" {
+            match pipeline::wavespeed::generate_background_music(&wavespeed_key, &full_script_joined, &output_dir).await {
+                Ok(p) => {
+                    temp_files.push(p.clone());
+                    Some(p)
+                }
+                Err(e) => {
+                    warn!("Lyria BGM generation failed: {} — continuing without BGM", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mixed_full_audio = if let Some(ref bgm_path) = full_bgm {
+            let mixed = output_dir.join("mixed_full_audio.mp3");
+            match mix_audio(&full_audio_path, bgm_path, &mixed).await {
+                Ok(()) => {
+                    temp_files.push(mixed.clone());
+                    mixed
+                }
+                Err(e) => {
+                    warn!("Audio mixing failed: {} — using raw TTS", e);
+                    full_audio_path.clone()
+                }
+            }
+        } else {
+            full_audio_path.clone()
+        };
+
         return finish_studio_render(
             db, cfg, output_dir, task_id_str,
             items.as_slice(),
