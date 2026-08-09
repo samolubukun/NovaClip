@@ -30,3 +30,4 @@ bytes = { workspace = true }
 async-stream = { workspace = true }
 reqwest = { workspace = true }
 zip = { workspace = true }
+base64 = { workspace = true }
