@@ -1,13 +1,13 @@
 # Contributing to NovaClip
 
-First off — thank you for being here. NovaClip is an ambitious, AI-heavy project
+First off - thank you for being here. NovaClip is an ambitious, AI-heavy project
 that spans Rust video pipelines, Python CV, React, and a growing list of
 third-party AI integrations. **We need your help.**
 
 Many of the pipelines (Nova Studio AI Shorts, YouTube Studio tools, Nova Edit's
 agent workflow, MCP tools, and the social-posting integration) are **prototype
 quality**. They work, but they are far from battle-tested. Bugs, missing
-fallbacks, brittle API integrations, and rough UX are expected — and fixing them
+fallbacks, brittle API integrations, and rough UX are expected - and fixing them
 is exactly the kind of contribution that matters most.
 
 ---
@@ -135,9 +135,9 @@ discuss before starting large work.
 ## Coding Conventions
 
 - **Rust**: `cargo fmt` and `cargo clippy` before pushing. No `unwrap()` on
-  user/network data — use `anyhow`, `Result`, and graceful fallbacks. Async code
+  user/network data - use `anyhow`, `Result`, and graceful fallbacks. Async code
   goes through Tokio.
-- **TypeScript/React**: the project is fully typed — no `any` unless truly
+- **TypeScript/React**: the project is fully typed - no `any` unless truly
   necessary. Follow existing component patterns (inline styles, lucide icons,
   `framer-motion`, `sonner` toasts).
 - **Fail loudly, fall back gracefully**: pipelines should degrade (e.g. Pexels
@@ -149,7 +149,7 @@ discuss before starting large work.
 
 ## Testing
 
-There is no formal test suite yet — **a great place to contribute**.
+There is no formal test suite yet - **a great place to contribute**.
 
 At minimum, before opening a PR:
 
@@ -168,43 +168,43 @@ Studio script, Nova Edit upload, etc.) and note in the PR what you tested.
 
 ## Where Help Is Most Needed
 
-Contributions are welcome across **every part of NovaClip** — the forms,
+Contributions are welcome across **every part of NovaClip** - the forms,
 workflows, UI/UX, backend, integrations, performance, and docs. Every mode and
 area can be improved:
 
-- **Nova Clipper** — transcription accuracy, scoring quality, cropping/smart
+- **Nova Clipper** - transcription accuracy, scoring quality, cropping/smart
   reframe, caption animations, chat-based clip editing, export options.
-- **Nova Studio — Stock B-Roll** — Pexels/Pixabay/Pinterest search quality,
+- **Nova Studio - Stock B-Roll** - Pexels/Pixabay/Pinterest search quality,
   keyword matching, clip trimming, video/photo mixing.
-- **Nova Studio — AI B-Roll** — WaveSpeed Seedance reliability, Pexels fallbacks,
+- **Nova Studio - AI B-Roll** - WaveSpeed Seedance reliability, Pexels fallbacks,
   Lyria AI music, parallel rendering.
 - **AI Shorts pipeline** (WaveSpeed actor/lip-sync, Seedance B-roll, TTS,
-  premium InfiniteTalk hosting) — resilience, fallbacks, cost controls.
-- **YouTube Studio tools** — thumbnail image-model selection, title/description
+  premium InfiniteTalk hosting) - resilience, fallbacks, cost controls.
+- **YouTube Studio tools** - thumbnail image-model selection, title/description
   quality, edge cases for videos/transcripts.
-- **Nova Edit agent workflow** — director/editor/reviewer reliability, better
+- **Nova Edit agent workflow** - director/editor/reviewer reliability, better
   shot selection, transitions, color grading, music.
-- **Nova Repurpose** — more platforms, better written-content copy, campaign
+- **Nova Repurpose** - more platforms, better written-content copy, campaign
   reporting.
-- **History / Task pages** — task filtering, status clarity, error surfacing,
+- **History / Task pages** - task filtering, status clarity, error surfacing,
   retry/resume UX, download flows.
-- **MCP server** — new tools, richer schemas, better error responses.
-- **Social publishing** (Upload-Post) — more platforms, retry logic, metadata.
-- **AI models & integrations** — swap-in providers, local/offline models
+- **MCP server** - new tools, richer schemas, better error responses.
+- **Social publishing** (Upload-Post) - more platforms, retry logic, metadata.
+- **AI models & integrations** - swap-in providers, local/offline models
   (Ollama, local STT), new WaveSpeed/Gemini models, caching.
-- **Forms & UX** — validation, defaults, responsive layouts, accessibility,
+- **Forms & UX** - validation, defaults, responsive layouts, accessibility,
   keyboard shortcuts, and error messages.
-- **Performance** — parallelization, queueing, FFmpeg efficiency, memory.
-- **Packaging** — the **Tauri desktop build** is on the roadmap; native setup,
+- **Performance** - parallelization, queueing, FFmpeg efficiency, memory.
+- **Packaging** - the **Tauri desktop build** is on the roadmap; native setup,
   auto-updates, and offline-first packaging are wide open.
-- **Tests & CI** — a test suite and a CI pipeline would help everyone.
+- **Tests & CI** - a test suite and a CI pipeline would help everyone.
 
 ---
 
 ## Code of Conduct
 
 Be kind. This project welcomes everyone regardless of experience level. Harassment
-of any kind is not tolerated. Disagreements happen — keep them technical and
+of any kind is not tolerated. Disagreements happen - keep them technical and
 respectful.
 
 ---
