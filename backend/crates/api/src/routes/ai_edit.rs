@@ -55,7 +55,19 @@ async fn ai_edit_handler(
     Path(task_id): Path<Uuid>,
     Json(req): Json<AiEditRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let gemini_key = req.gemini_api_key
+    execute_ai_edit(&state, &task_id, req.clip_ids, req.instruction, req.gemini_api_key).await
+}
+
+/// Shared NovaEdit implementation — used by the REST route and by the MCP
+/// `run_ai_edit` tool. Plans and executes edit actions against the task's clips.
+pub async fn execute_ai_edit(
+    state: &AppState,
+    task_id: &Uuid,
+    clip_ids: Vec<Uuid>,
+    instruction: String,
+    api_key: Option<String>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let gemini_key = api_key
         .filter(|k| !k.trim().is_empty())
         .or_else(|| {
             std::env::var("GEMINI_API_KEY").ok().filter(|k| !k.trim().is_empty())
@@ -67,13 +79,13 @@ async fn ai_edit_handler(
     let gemini_model = std::env::var("GEMINI_MODEL")
         .unwrap_or_else(|_| "gemini-3.1-flash-lite".into());
 
-    let clip_ids_str = req.clip_ids.iter()
+    let clip_ids_str = clip_ids.iter()
         .map(|id| id.to_string())
         .collect::<Vec<_>>()
         .join(", ");
 
     let system_prompt = AI_EDIT_SYSTEM_PROMPT
-        .replace("INSTRUCTION_PLACEHOLDER", &req.instruction)
+        .replace("INSTRUCTION_PLACEHOLDER", &instruction)
         .replace("CLIP_IDS_PLACEHOLDER", &clip_ids_str);
 
     // Call Gemini
@@ -83,7 +95,7 @@ async fn ai_edit_handler(
         },
         "contents": [{
             "role": "user",
-            "parts": [{"text": req.instruction}]
+            "parts": [{"text": instruction}]
         }],
         "generationConfig": {
             "temperature": 0.2,
@@ -150,7 +162,7 @@ async fn ai_edit_handler(
             "trim" => {
                 let clip_id = action["clip_id"].as_str().unwrap_or("");
                 // Delegate to existing trim logic via DB update
-                let _ = trim_clip_simple(&state, &task_id, clip_id,
+                let _ = trim_clip_simple(state, task_id, clip_id,
                     action["start_offset"].as_f64().unwrap_or(0.0),
                     action["end_offset"].as_f64().unwrap_or(0.0)).await;
                 results.push(json!({"action": "trim", "clip_id": clip_id, "status": "applied"}));
