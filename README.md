@@ -4,9 +4,9 @@
 
 # **NovaClip**
 
-### **AI-Powered Clipper, Agentic Video Editor, and Faceless AI Creator**
+### **One toolkit for every kind of video — clipping, AI creation, agentic editing, repurposing, and packaging.**
 
-Turn long podcasts, YouTube videos, and live streams into high-converting clips, transform one or more raw footage files into a human-approved agentic edit, or generate complete faceless AI videos from scripts and topics.
+Take a podcast, stream, or raw footage and turn it into viral clips, a faceless AI video, a UGC-style AI Shorts ad, a human-approved agentic edit, or a full multi-platform repurpose campaign — then publish it straight to YouTube, TikTok, and Instagram.
 
 [![Rust](https://img.shields.io/badge/Rust-CE412B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Axum](https://img.shields.io/badge/Axum-000000?style=for-the-badge&logo=rust&logoColor=orange)](https://github.com/tokio-rs/axum)
@@ -17,6 +17,7 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 [![Gemini AI](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![OpenRouter](https://img.shields.io/badge/OpenRouter_Free_Models-6566F1?style=for-the-badge&logo=openai&logoColor=white)](https://openrouter.ai/)
 [![Deepgram](https://img.shields.io/badge/Deepgram_Nova--3-13EF95?style=for-the-badge&logo=deepgram&logoColor=black)](https://deepgram.com/)
+[![ElevenLabs](https://img.shields.io/badge/ElevenLabs-000000?style=for-the-badge&logo=elevenlabs&logoColor=white)](https://elevenlabs.io/)
 [![WaveSpeed](https://img.shields.io/badge/WaveSpeed-6B3FBB?style=for-the-badge&logo=wavespeed&logoColor=white)](https://wavespeed.ai/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
@@ -26,171 +27,330 @@ Turn long podcasts, YouTube videos, and live streams into high-converting clips,
 
 ---
 
-## Features
+## 🗺️ Modes at a Glance
 
-- **Nova Clipper - Viral Clip Generator**: Find high-potential moments in uploaded videos, YouTube content, podcasts, and streams. Transcribe speech, score candidate segments, crop for multiple aspect ratios, burn animated captions, and export individual clips or ZIP packages.
-- **Nova Edit - Agentic Video Editor**: Upload one or multiple raw footage files and provide a creative brief. Nova Edit combines scene detection, transcript timestamps, and representative-frame vision analysis to build a footage index. A Director proposes an ordered EditPlan with exact trims and optional text overlays, waits for human approval, then an Editor renders the cut and a Reviewer scores the result. Request a new plan or re-edit using natural-language feedback.
-- **Nova Studio - Faceless AI Creator**: Generate complete faceless videos from scratch. Two b-roll modes: **Stock B-Roll** searches and fetches HD media via the Pexels & Pixabay APIs (plus Pinterest as a scraper fallback), while **AI B-Roll** renders a unique AI video clip per scene with the `bytedance/seedance-v1-pro-fast` text-to-video model on **WaveSpeed** (up to 3 clips in parallel, Pexels API as fallback) plus optional AI background music via **Lyria** (SoundHelix fallback). Single continuous voiceover (never segmented), full word-level timestamp alignment, global ASS karaoke captions synced exactly to audio, and media clips trimmed-to-duration concatenated into one seamless video.
-- **Provider-Based AI Model Selection**: Choose Gemini or OpenRouter independently in Nova Clipper, Nova Studio, and Nova Edit. Gemini defaults to Gemini 3.1 Flash-Lite. Clipper and Studio offer the current text-capable OpenRouter choices, while Nova Edit only exposes free multimodal models used for visual footage analysis (`google/gemma-4-26b-a4b-it:free`, `nvidia/nemotron-nano-12b-v2-vl:free`, and `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`).
-- **Multi-Source Stock Media Search**: Automated HD video and photo retrieval with multi-platform fallback across the **Pexels API** and **Pixabay API** (search by keyword and fetch media using your API keys), plus **Pinterest Video & Photo Scraper** (Playwright + yt-dlp) used as a fallback source.
-- **Multi-Provider Neural Voiceovers (TTS) with Duration Sync**: Choose between **Microsoft Edge-TTS** (free, 10+ languages, estimated word timestamps), **ElevenLabs API** (native /with-timestamps endpoint for character-level alignment), or **Deepgram Aura TTS** + Deepgram STT (model nova-2) for precise word timing. Final video uses `-shortest` to ensure audio and video always end together. AI B-Roll mode restricts voiceovers to Deepgram Aura and ElevenLabs only.
-- **AI Virality Scoring**: Gemini AI evaluates hooks, retention probability, emotional peaks, and shareability for every extracted segment.
-- **Global ASS Karaoke Subtitles**: Word-level timestamps from any TTS provider drive multi-color active word-pop subtitle animations. Generated as a single `.ass` file for the entire video with per-word timing, no timestamp rebasing needed.
-- **Font & Typography Library**: Full studio typography control with 12 popular fonts (The Bold Font, TikTok Sans, Montserrat, Impact, Bebas Neue, Inter, etc.) and custom font size slider.
-- **AI Caption Color Palette Picker**: Customize primary text color and highlight accent color per clip with real-time sync.
-- **Brand Watermark Overlay**: Upload transparent PNG/WEBP/JPEG logos with configurable positioning (Top Right, Top Left, Bottom Left, Bottom Right) and opacity slider. Looped across full video duration via ffmpeg `-loop 1` with per-frame alpha blending.
-- **Preset Caption Animations**: Choose between Bouncy Word-by-Word Pop, Typewriter Reveal, Smooth Fade-In, and Slide Up.
-- **NLP Emoji Auto-Insertion**: Automatically analyze transcript sentiment and append contextually relevant emojis to key caption words.
-- **Multi-Provider Speech-to-Text (STT)**: Choose between **Deepgram Nova-3** (cloud, fast word-level timestamps & multi-speaker diarization), **Vosk Local** (fast offline CPU speech recognition), or **Whisper Local** (`ggml-base.bin`, high-accuracy offline neural transcription).
-- **AI Vertical Reframe & Split-Screen**: YOLO + MediaPipe subject tracking with selectable camera modes (Single, Split Screen, Auto) and Deepgram v2 active-speaker diarization / hard cuts. Custom divider line and preset controls.
-- **Live Device Mockup Preview**: Dynamic aspect ratio live preview showing realistic frames for Vertical 9:16 (mobile notch frame), Square 1:1, Widescreen 16:9, and Original video.
-- **Originality Boost**: Apply brightness, contrast, and saturation adjustments to alter perceptual video hashes.
-- **AI Caption Translation**: Translate captions to over 22 languages (Spanish, French, German, Japanese, Korean, Chinese, Portuguese, Italian, Arabic, etc.) via Gemini.
-- **AI Edit Chat**: Natural-language editing commands on generated clips (trim, delete, reframe, captions, translate, memes, merge) via a floating chat panel on the Task page.
-- **Smart Multi-Aspect Cropping**: Auto-detects and centers active speakers for 9:16 vertical shorts, 1:1 square posts, or 16:9 widescreen clips.
-- **Zip Export**: Export individual clips or download all generated clips in a single `.zip` package.
-- **100% BYOK (Bring Your Own Key)**: Local browser storage for Gemini, OpenRouter, ElevenLabs, Deepgram, WaveSpeed, Pexels, and Pixabay keys. Runs 100% offline-compatible for desktop & local deployment.
+NovaClip is organized as a set of independent "modes", each with its own tab in
+the top navigation. Modes with internal tabs are noted below.
+
+| Mode | Tab(s) | What it does |
+|---|---|---|
+| **Nova Clipper** | — | Paste a YouTube URL, upload footage, or pick a local file → transcribe, score virality, auto-crop, burn captions, export clips. |
+| **Nova Studio** | `Stock B-Roll` · `AI B-Roll` · `AI Shorts` | Generate complete faceless videos from a topic or script — stock or AI-generated visuals — or turn a product URL into a UGC-style AI actor ad. |
+| **Nova Edit** | — | Agentic editing: upload raw footage + a creative brief → Director plans → you approve → Editor renders → Reviewer scores. |
+| **Nova Repurpose** | — | Turn one video/campaign into per-platform variants (TikTok, Instagram, YouTube, LinkedIn, X) plus AI-written newsletter/blog copy and a campaign PDF. |
+| **YouTube Studio** | `Thumbnails` · `Title Studio` · `Descriptions` | Content-packaging toolkit: AI thumbnails (with face/background uploads), viral title generation + refinement chat, and SEO descriptions with chapter timestamps. |
+| **History** | — | Every task across all modes, with filters and dedicated styling per mode. |
+
+> **MCP server** — the entire pipeline is also exposed programmatically via a
+> Model Context Protocol endpoint (`POST /mcp`), so AI assistants can drive NovaClip
+> end-to-end. [Jump to MCP](#-mcp-server).
 
 ---
 
-## Nova Edit Agentic Workflow
+## 📸 Screenshots
 
-Nova Edit is designed for creators, marketers, agencies, and small businesses that already have footage but want to reduce repetitive timeline work while retaining editorial control.
-
-### What Nova Edit Can Do
-
-- Accept one video or combine multiple A-roll, B-roll, interview, testimonial, product, and multi-camera files.
-- Detect scene changes with FFmpeg and build a reusable footage index.
-- Transcribe speech with word-level timestamps through the configured STT provider.
-- Continue in visual-only mode when footage has no usable audio track.
-- Extract representative midpoint frames from detected shots and analyze them in batches of up to 12.
-- Record visual descriptions, shot types, and visual-quality scores alongside transcript metadata.
-- Select relevant shots across all uploaded files and avoid cutting spoken words in half.
-- Propose exact shot order, relative trim points, segment duration, and optional text overlays.
-- Pause at an `awaiting_approval` stage before rendering anything.
-- Accept human feedback such as "remove the slow introduction" or "use more product shots" and generate a revised plan.
-- Render `9:16`, `1:1`, `16:9`, or `4:3` output with deterministic FFmpeg processing.
-- Support short-form targets from 20 to 90 seconds and long-form targets from 2 to 60 minutes.
-- Score adherence, pacing, visual quality, watchability, and overall editorial quality.
-- Automatically retry edits below the selected review threshold, up to the configured retry limit.
-- Save completed Nova Edit jobs in History with dedicated cyan styling and filtering.
-
-### Agent Sequence
-
-1. **Ingest & Analyze**: Upload footage, detect scene boundaries, transcribe audio when available, analyze representative frames with a vision-capable model, and create a packed shot-level footage index.
-2. **Director Plans**: Use Gemini or OpenRouter to convert the creative brief and footage index into a structured EditPlan.
-3. **Your Approval**: Inspect the Director's rationale, selected shots, trim points, ordering, and overlays. Approve the plan or request a revision.
-4. **Editor Renders**: Extract selected segments, normalize them to the chosen aspect ratio, and concatenate them into `final_video.mp4`.
-5. **Reviewer Scores**: Evaluate the edit against the brief and retry with actionable feedback when its score is below the configured threshold.
-
-Short-form planning emphasizes hooks, concise pacing, and payoff. Long-form planning uses more shots, longer context-preserving segments, section-like structure, continuity, and a complete conclusion.
-
-### Current Scope
-
-Nova Edit currently focuses on intelligent footage selection, transcript-aware trimming, ordering, approval, rendering, and feedback-driven revisions. It is not yet a replacement for a full nonlinear editor and does not currently provide advanced transitions, keyframed motion graphics, color grading, automatic music selection, or detailed audio mixing.
+<table>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="Screenshots/novaclippertask.jpg" alt="Nova Clipper — task and clip review" width="60%"/>
+      <br/><em>Nova Clipper — Task &amp; clip review</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><img src="Screenshots/novaclipper.jpg" alt="Nova Clipper — viral clip generator" width="95%"/><br/><em>Nova Clipper — viral clip generator</em></td>
+    <td align="center"><img src="Screenshots/novaedit.jpg" alt="Nova Edit — agentic video editor" width="95%"/><br/><em>Nova Edit — agentic video editor</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="Screenshots/novarepurpose.jpg" alt="Nova Repurpose" width="95%"/><br/><em>Nova Repurpose</em></td>
+    <td align="center"><img src="Screenshots/novastudio1.jpg" alt="Nova Studio — Stock B-Roll" width="95%"/><br/><em>Nova Studio — Stock B-Roll</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="Screenshots/novastudio2.jpg" alt="Nova Studio — AI B-Roll" width="95%"/><br/><em>Nova Studio — AI B-Roll</em></td>
+    <td align="center"><img src="Screenshots/novastudio3.jpg" alt="Nova Studio — AI Shorts" width="95%"/><br/><em>Nova Studio — AI Shorts</em></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="Screenshots/youtubestudio.jpg" alt="YouTube Studio — thumbnails, titles, descriptions" width="95%"/><br/><em>YouTube Studio — thumbnails, titles, descriptions</em></td>
+    <td align="center"><img src="Screenshots/novarepurposetask.jpg" alt="Nova Repurpose — task and campaign review" width="95%"/><br/><em>Nova Repurpose — Task &amp; campaign review</em></td>
+  </tr>
+</table>
 
 ---
 
-## Nova Studio AI B-Roll Workflow
+## ⚠️ Prototype Status
 
-Nova Studio offers two b-roll modes for faceless AI video creation:
+**The AI-heavy modes — AI Shorts, YouTube Studio, Nova Edit, and AI B-Roll — are
+prototypes.**
 
-- **Stock B-Roll**: The original flow. Searches Pexels & Pixabay by keyword and fetches HD video/photo clips using your API keys (Pinterest as a scraper fallback), downloads them, and trims each to its voiceover segment duration.
-- **AI B-Roll**: Generates a unique AI video clip for every sentence using the `bytedance/seedance-v1-pro-fast` text-to-video model via the **WaveSpeed API**. Clips render in parallel (up to 3 concurrent) and are downloaded and trimmed like stock clips. If the WaveSpeed call fails or returns no usable clip, a Pexels stock clip is used as fallback; black placeholder frames are the last resort. When AI background music is selected, **Lyria** generates it (with SoundHelix as fallback).
-
-### AI B-Roll Notes
-
-- Requires a **WaveSpeed API key**, configured in Settings (⚙️) or passed per-task.
-- Voiceover is restricted to **Deepgram Aura** and **ElevenLabs** for precise word timestamps; Edge-TTS is auto-switched to Deepgram Aura in AI mode.
-- The video model, resolution, and clip concurrency are configurable via `WAVESPEED_VIDEO_MODEL` (default `bytedance/seedance-v1-pro-fast/text-to-video`), `WAVESPEED_VIDEO_RESOLUTION` (default 480p), and `WAVESPEED_CLIP_CONCURRENCY` (default 3) environment variables.
-- The Nova Studio nav tab and page theme switch to fuchsia in AI mode.
+And it's not just the AI pipelines — **everything** would benefit from
+improvement: the **forms**, **workflows**, **UI/UX**, integrations, performance,
+error handling, and docs. Contributions are welcome everywhere.
+See [Contributing](#-contributing).
 
 ---
+
+## ✨ Features
+
+- **Nova Clipper — viral clip generation**: transcribe speech, AI-score candidate
+  segments (hook, retention, emotion, shareability), smart multi-aspect cropping
+  (9:16 / 1:1 / 16:9), animated captions, and export individual clips or a ZIP.
+- **Nova Studio — faceless AI creation**: from a topic or script to a finished
+  video with a single continuous voiceover, word-level karaoke captions, music,
+  and branding. Two visual modes — **Stock B-Roll** (Pexels/Pixabay/Pinterest)
+  and **AI B-Roll** (WaveSpeed Seedance clips with Pexels fallback + optional
+  Lyria AI music).
+- **Nova Studio — AI Shorts**: product URL → script → WaveSpeed AI actor
+  (Flux 2 Pro portrait, AI Talking Photos / InfiniteTalk lip-sync) → Seedance
+  B-roll → captioned, publish-ready 9:16 video.
+- **Nova Edit — agentic editing**: footage index + visual analysis → Director
+  proposes an EditPlan → human approval → Editor renders → Reviewer scores and
+  auto-retries. Natural-language revisions like *"make it shorter"*.
+- **Nova Repurpose**: one video/campaign → platform-optimized variants
+  (`tiktok_video.mp4`, `instagram_video.mp4`, …) + AI-written newsletter/blog
+  copy + downloadable campaign PDF.
+- **YouTube Studio tools**: Gemini image-model thumbnails (face/background
+  uploads, up to 4 variants), viral titles with refinement chat, and SEO
+  descriptions with auto chapter timestamps.
+- **One-click publishing**: post any generated video (clip, final, or repurposed
+  variant) to **YouTube, TikTok, and/or Instagram** via Upload-Post.
+- **Provider-based AI model selection**: choose **Gemini** or **OpenRouter**
+  independently per mode; Nova Edit exposes free multimodal models for footage
+  vision analysis.
+- **Multi-provider STT**: Deepgram Nova-3 (cloud, diarization), Vosk Local
+  (offline CPU), or Whisper Local ([`ggml-base.bin`](https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-base.bin),
+  offline).
+- **Multi-provider TTS**: Edge-TTS (free), ElevenLabs (character-aligned
+  timestamps), or Deepgram Aura — with `-shortest` audio/video sync.
+- **Global ASS karaoke subtitles**: multi-color active word-pop captions from
+  any TTS provider, one `.ass` file, exact per-word timing.
+- **Typography & captions**: 12 fonts, font-size control, caption color palette,
+  4 caption animations, NLP emoji auto-insertion, and 22+ language translation.
+- **Brand watermark overlay**: transparent PNG/WEBP/JPEG logo with position and
+  opacity controls, looped across the whole video.
+- **AI vertical reframe & split-screen**: YOLO + MediaPipe subject tracking with
+  Single / Split-Screen / Auto camera modes and speaker diarization.
+- **Originality boost**: brightness/contrast/saturation tweaks to alter video
+  hashes.
+- **100% BYOK**: bring your own keys — stored only in your browser.
+
+---
+
+## 🎬 Mode Deep-Dives
+
+### Nova Clipper — Viral Clip Generator
+
+Paste a YouTube URL, upload footage, or pick a local file. NovaClip downloads and
+transcribes it, then AI-scores every candidate segment for hook strength,
+retention, emotional peaks, and shareability. Clips are smart-cropped for
+vertical/shorts or square, captions are burned in, and you can download each clip
+or everything as a ZIP. A floating chat panel lets you edit clips with natural
+language (trim, delete, reframe, captions, translate, merge).
+
+### Nova Studio — Faceless AI Creator (3 sub-modes)
+
+Each sub-mode gets its own accent color so you always know where you are:
+**violet** for Stock B-Roll, **fuchsia** for AI B-Roll, **purple** for AI Shorts.
+
+**Stock B-Roll** — the original faceless flow. Searches **Pexels** & **Pixabay**
+by keyword (Pinterest scraper as fallback), downloads HD video/photo clips, and
+trims each to its voiceover segment.
+
+**AI B-Roll** — renders a unique AI video clip per sentence via
+`bytedance/seedance-v1-pro-fast` on **WaveSpeed** (up to 3 clips in parallel,
+Pexels fallback, black frames last resort). Optional **Lyria** AI background
+music (SoundHelix fallback).
+
+**AI Shorts** — a UGC-style vertical ad with a synthetic presenter, scoped to the
+pipeline (WaveSpeed + ElevenLabs only):
+
+1. **Analyze** — Gemini researches the product URL and writes a viral script.
+2. **Actor** — **Flux 2 Pro** (`wavespeed-ai/flux-2-pro/text-to-image`) creates a
+   photoreal 9:16 portrait; **AI Talking Photos** or **InfiniteTalk** (premium)
+   lip-syncs it to the hook.
+3. **B-roll** — **Seedance** generates one clip per sentence in parallel.
+4. **Render** — talking head anchors scene 0, B-roll covers the rest, captions
+   and voiceover are mixed into `final_video.mp4`.
+5. **Publish (optional)** — auto-post to YouTube via Upload-Post.
+
+> **WaveSpeed models used by AI Shorts** (also shown on the page): Flux 2 Pro,
+> AI Talking Photos, InfiniteTalk (`wavespeed-ai/infinitetalk-fast`, premium),
+> Seedance v1 Pro.
+
+### Nova Edit — Agentic Video Editor
+
+Upload one or more footage files (A-roll, B-roll, interviews, product, multi-cam)
+plus a creative brief. Nova Edit detects scenes, transcribes speech, and analyzes
+representative frames with a vision-capable model to build a footage index. The
+**Director** proposes an ordered EditPlan (shots, trims, overlays). You review
+and approve, the **Editor** renders the cut, and the **Reviewer** scores it and
+auto-retries below your threshold. Works visual-only when there's no audio.
+Short-form (20–90s) and long-form (2–60min) targets. *Not yet a full NLE —
+transitions, color grading, keyframed motion graphics, and detailed audio mixing
+are on the roadmap.*
+
+### Nova Repurpose — One Video, Every Platform
+
+Choose a source (a completed task, an uploaded file, or a YouTube URL), describe
+your campaign (audience, goal, tone, core message, CTA), and pick platforms —
+video variants for TikTok / Instagram / YouTube / LinkedIn / X, and written copy
+for Newsletter / Blog. The worker renders each `{platform}_video.mp4` to its
+target aspect ratio and duration, generates AI-written copy, and gives you a
+downloadable campaign PDF.
+
+### YouTube Studio — Content Packaging Toolkit (3 tabs)
+
+**Not an uploader** — it generates the packaging (thumbnails, titles,
+descriptions) for your videos. Posting is handled by Upload-Post.
+
+- **Thumbnails**: up to 4 branded 16:9 variants rendered by a Gemini **image**
+  model (`gemini-3.1-flash-image-preview` by default; overridable via the
+  "Thumbnail Image Model" dropdown or `GEMINI_THUMBNAIL_MODEL`). Optional face
+  photo and background image, style presets, and design-rationale prompts.
+- **Title Studio**: viral/educational/story/controversial/listicle tones, 5–20
+  candidates, video upload or transcript for content-aware titles, and a
+  refinement chat.
+- **Descriptions**: full SEO-ready description from a YouTube URL (auto transcript),
+  pasted transcript, or uploaded video — with chapter timestamps.
+
+The LLM selector (Gemini / OpenRouter) applies to **text only**; thumbnails
+always use your **Gemini** key with an image-capable model (text LLMs like
+Flash-Lite and OpenRouter models can't generate images).
+
+### Social Posting (Upload-Post)
+
+Every generated video — Clipper clips, AI Shorts `final_video.mp4`, Nova Edit
+cuts, Repurpose platform variants — can be posted to **YouTube, TikTok, and/or
+Instagram**:
+
+- **UI**: the "Publish" button on clip cards, the featured player, and "Publish
+  Final Video" (`POST /tasks/{id}/publish`).
+- **MCP**: the `publish_clip` tool does the same programmatically.
+- Upload-Post supports 13+ platforms in total; add more by extending
+  `uploadpost.rs::publish_video`.
+
+---
+
+## 🤖 MCP Server (Model Context Protocol)
+
+NovaClip exposes its entire pipeline at **`POST /mcp`**
+(`http://localhost:8000/mcp`) via JSON-RPC 2.0 over HTTP — the same surface the
+UI uses. Connect Claude Desktop, Cursor, or any MCP client.
+
+**All 15 tools are implemented:**
+
+| Tool | Purpose |
+|---|---|
+| `process_video` | Submit a YouTube URL or uploaded video path for clipping → task UUID |
+| `get_job_status` | Poll task status/progress |
+| `list_clips` | List a completed task's clips with file URLs |
+| `get_quota` | Task count in the system |
+| `add_subtitles` | Burn styled captions (classic/karaoke) onto an existing clip |
+| `publish_clip` | Post a clip to YouTube/TikTok/Instagram via Upload-Post |
+| `create_shorts_video` | Kick off an AI Shorts task (script → actor → B-roll → render, optional auto-publish) |
+| `run_ai_edit` | Apply a natural-language edit to clips (trim/delete/captions/translate/merge…) |
+| `cancel_task` | Cancel a queued/running task |
+| `resume_task` | Resume a failed task |
+| `trim_clip` | Trim a clip to new offsets |
+| `delete_clip` | Delete a clip |
+| `generate_titles` | Gemini title candidates from topic/transcript |
+| `generate_description` | Gemini description from topic/transcript |
+| `generate_thumbnail` | Gemini thumbnail variants (data-URL PNGs) |
+
+List tools:
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+Publish the first clip of a job to TikTok + Instagram:
+
+```bash
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"publish_clip","arguments":{"job_id":"<TASK_UUID>","clip_index":0,"platforms":["tiktok","instagram"],"api_key":"<UPLOADPOST_KEY>"}}}'
+```
+
+Client config:
+
+```json
+{
+  "mcpServers": {
+    "novaclip": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": { "Content-Type": "application/json" }
+    }
+  }
+}
+```
+
+---
+
+## 🧱 Tech Stack
 
 | Layer | Technologies & Tools |
 |---|---|
-| **Backend API** | Rust, Axum 0.8, Tokio Async Runtime, SQLx SQLite (WAL mode) |
-| **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC In-Process Async Queue, Playwright Chromium (Pinterest scraper), WaveSpeed Seedance & Lyria API |
+| **Backend API** | Rust, Axum 0.8, Tokio, SQLx + SQLite (WAL) |
+| **Video Engine** | FFmpeg, yt-dlp, Tokio MPSC async queue, Playwright Chromium (Pinterest scraper), WaveSpeed Seedance/Lyria/Flux/Actor APIs |
 | **Subject Tracking** | Python 3.11, Ultralytics YOLO11n-seg, MediaPipe Face/Pose, OpenCV, SceneDetect |
-| **Speech AI / STT / TTS** | Deepgram Nova-3 STT, Vosk Local STT, Whisper Local (ggml-base.bin), ElevenLabs with-timestamps API, Edge-TTS, Deepgram Aura TTS |
-| **Analysis & LLM AI** | Google Gemini and OpenRouter for virality analysis, caption translation, script generation, Nova Edit planning, and editorial review |
+| **Speech AI / STT / TTS** | Deepgram Nova-3 STT, Vosk Local STT, Whisper Local, ElevenLabs, Edge-TTS, Deepgram Aura TTS |
+| **LLM AI** | Google Gemini (text + image models), OpenRouter (free text/vision models) |
 | **Frontend UI** | React 19, TypeScript, Vite 6, Framer Motion, Lucide Icons |
-| **DevOps & Packaging** | Docker, Docker Compose, Nginx, Makefile |
+| **Packaging** | Docker, Docker Compose, Nginx, Makefile |
 
 ---
 
-## Quick Start & Installation
+## 🚀 Quick Start
 
-### Option A: Running with Docker (Recommended)
+### Option A: Docker (recommended)
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/samolubukun/NovaClip.git
-   cd NovaClip
-   ```
-
-2. **Launch Container Services**:
-   ```bash
-   docker-compose up -d --build
-   ```
-
-3. **Access the App**:
-   - **Frontend App**: `http://localhost:3000`
-   - **Backend API**: `http://localhost:8000`
-
----
-
-### Option B: Running Without Docker (Native Local Setup)
-
-#### Prerequisites:
-- **Rust toolchain** (`cargo`, `rustc` 1.80+)
-- **Node.js** (v18+ and `npm`)
-- **FFmpeg** installed system-wide and available in PATH
-- **yt-dlp** installed system-wide or placed in `backend/yt-dlp.exe`
-- **Python 3.11+** with virtual environment (required for AI vertical reframe)
-
-#### 1. Backend Setup:
 ```bash
+git clone https://github.com/samolubukun/NovaClip.git
+cd NovaClip
+docker-compose up -d --build
+```
+
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+
+### Option B: Native local setup
+
+Prerequisites: Rust 1.80+, Node 18+, FFmpeg in PATH, yt-dlp (PATH or
+`backend/yt-dlp.exe`), Python 3.11+.
+
+```bash
+# 1. Backend
 cd backend
-# Set up Python venv for AI vertical reframe
 python -m venv novaclip_reframe/venv
 novaclip_reframe/venv\Scripts\pip install --extra-index-url https://download.pytorch.org/whl/cpu \
     ultralytics>=8.3.0 mediapipe==0.10.14 opencv-python>=4.10.0.84 \
     scenedetect>=0.6.4 lap>=0.5.12
-
-# Run database migrations & start Axum API server
 cargo run --bin novaclip-api
-```
 
-#### 2. Frontend Setup:
-```bash
+# 2. Frontend (new terminal)
 cd frontend
-# Install dependencies
 npm install
-
-# Start Vite dev server
 npm run dev
 ```
 
 ---
 
-## License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
 ## 🔑 BYOK (Bring Your Own Keys)
 
-NovaClip is engineered as a zero-vendor-lockin application. Configure your API keys directly inside the in-app **Settings Modal (⚙️)**:
+Zero vendor lock-in. Configure keys in the in-app **Settings Modal (⚙️)** —
+they're stored only in your browser.
 
-- **Google Gemini API Key**: [Get Key at Google AI Studio](https://ai.google.dev)
-- **OpenRouter API Key**: [Get Key at OpenRouter](https://openrouter.ai/keys)
-- **Deepgram API Key**: [Get Key at Deepgram Console](https://console.deepgram.com)
-- **ElevenLabs API Key**: [Get Key at ElevenLabs](https://elevenlabs.io/app/settings/api-keys)
-- **Pexels API Key**: [Get Key at Pexels](https://www.pexels.com/api/)
-- **Pixabay API Key**: [Get Key at Pixabay](https://pixabay.com/api/docs/)
-- **WaveSpeed API Key**: [Get Key at WaveSpeed](https://platform.wavespeed.ai/) (required for AI B-Roll Seedance clips & Lyria music)
+| Key | Needed for | Get it |
+|---|---|---|
+| **Gemini** | Scripts, scoring, translation, YouTube Studio text & thumbnails, Nova Edit | [Google AI Studio](https://ai.google.dev) |
+| **OpenRouter** | Alternative free text/vision LLMs | [OpenRouter](https://openrouter.ai/keys) |
+| **Deepgram** | STT (Nova-3) + Aura TTS | [Deepgram Console](https://console.deepgram.com) |
+| **ElevenLabs** | Neural TTS (Studio, AI Shorts, captions) | [ElevenLabs](https://elevenlabs.io/app/settings/api-keys) |
+| **Pexels** | Stock B-roll search | [Pexels API](https://www.pexels.com/api/) |
+| **Pixabay** | Stock B-roll search | [Pixabay API](https://pixabay.com/api/docs/) |
+| **WaveSpeed** | AI B-Roll, AI Shorts (actor/lip-sync/B-roll), Lyria music | [WaveSpeed](https://platform.wavespeed.ai/) |
+| **Upload-Post** | One-click publishing (YouTube/TikTok/Instagram) | [Upload-Post](https://app.upload-post.com/api-keys) |
 
 ---
 
@@ -201,28 +361,75 @@ NovaClip/
 ├── backend/
 │   ├── crates/
 │   │   ├── api/          # Axum HTTP routes & SSE progress streaming
-│   │   │   └── src/routes/ (tasks, ai_edit, media, etc.)
+│   │   │   └── src/routes/ (tasks, ai_edit, media, youtube_studio, mcp, ...)
 │   │   ├── db/           # SQLite database models & SQLx queries
 │   │   └── worker/       # Video processing pipeline
-│   │       └── src/pipeline/ (nova_edit, clip, caption, reframe, originality, translate, tts, scraper, studio_llm, wavespeed, ...)
+│   │       └── src/pipeline/ (clip, caption, reframe, tts, scraper,
+│   │                         studio_llm, wavespeed, nova_edit, repurpose, ...)
 │   ├── novaclip_reframe/ # Python package for AI vertical reframe (YOLO + MediaPipe)
-│   │   ├── novaclip_reframe/
-│   │   │   └── auto_reframe.py  # Core subject-tracking engine
-│   │   └── venv/         # Python virtual environment (gitignored)
 │   ├── migrations/       # Database SQL schema migrations
-│   └── Cargo.toml        # Rust workspace root configuration
+│   └── Cargo.toml
 ├── frontend/
 │   ├── src/
-│   │   ├── components/   # Reusable UI components (Nav, SettingsModal)
-│   │   ├── pages/        # Nova Clipper, Nova Edit, Nova Studio, Task, and History views
-│   │   └── lib/          # API client & SSE progress listeners
-│   └── package.json      # Frontend React + Vite dependencies
-├── docker-compose.yml    # Multi-container orchestration
-└── README.md             # Project documentation
+│   │   ├── pages/        # Home (Clipper), Studio, NovaEdit, Repurpose,
+│   │   │                 # YouTubeStudio, Task, History
+│   │   ├── components/   # Nav, SettingsModal, shared UI
+│   │   └── lib/          # API client, SSE listeners, model lists
+│   └── package.json
+├── docker-compose.yml
+├── Makefile
+├── LICENSE
+└── CONTRIBUTING.md
 ```
 
 ---
 
+## 🗓️ Roadmap
+
+Current focus areas and planned work (all open for contribution):
+
+- **🖥️ Tauri 2 desktop app** — native packaging of the whole stack with
+  auto-updates, a tray/offline experience, and one-click local runs. *A major
+  goal.*
+- **Resilience & reliability** — harden the prototype pipelines (AI Shorts,
+  YouTube Studio, Nova Edit): more fallbacks, retries, timeouts, and clear
+  error surfacing.
+- **More models & providers** — configurable WaveSpeed video models, new Gemini
+  image models, local/offline LLMs (Ollama), and additional STT/TTS providers.
+- **Publishing** — more platforms in Upload-Post integration, native uploaders
+  (YouTube Data API, TikTok, IG Graph), scheduling, and metadata presets.
+- **Nova Edit 2.0** — transitions, color grading, music, multi-track audio, and
+  finer approval controls.
+- **Studio** — multi-actor AI Shorts, voice cloning, longer durations, batch
+  generation, and cost controls.
+- **Performance** — deeper parallelization, smarter queueing, FFmpeg
+  efficiency, and memory tuning.
+- **MCP expansion** — more tools (repurpose, YouTube Studio, scheduling),
+  richer schemas, and better error contracts.
+- **Tests & CI** — automated test suite, lint pipeline, and release automation.
+
+---
+
+## 🤝 Contributing
+
+**Contributions are welcome — and genuinely needed.** This is a young,
+prototype-heavy project: AI Shorts, YouTube Studio, Nova Edit, and the various
+integrations can break, and the whole codebase benefits from fresh eyes. Whether
+it's a bug report, a fallback, a new integration, a performance fix, or a
+feature, we'd love your help.
+
+- **[Read the contributing guide](CONTRIBUTING.md)** — setup, workflow, and
+  conventions.
+- Open issues for bugs and feature ideas.
+- PRs should compile clean: `cargo check -p novaclip-api -p novaclip-worker` and
+  `npx tsc -b`.
+- Check the [Roadmap](#-roadmap) for high-impact areas like the **Tauri desktop
+  build**, tests/CI, and pipeline hardening.
+
+---
+
 ## 📜 License
+
+Distributed under the **MIT License**. See [LICENSE](LICENSE).
 
 MIT License © [Samuel Olubukun](https://github.com/samolubukun)
