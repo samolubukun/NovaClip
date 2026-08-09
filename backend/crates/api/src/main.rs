@@ -62,6 +62,8 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::clips_router())
         .merge(routes::media_router())
         .merge(routes::ai_edit_router())
+        .merge(routes::youtube_router())
+        .merge(routes::mcp_router())
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
