@@ -22,6 +22,7 @@ pub fn tasks_router() -> Router<AppState> {
     Router::new()
         .route("/tasks", get(list_tasks).post(create_task))
         .route("/studio/generate_script", post(generate_studio_script))
+        .route("/studio/analyze_product", post(analyze_product))
         .route("/tasks/{id}", get(get_task).delete(delete_task).patch(update_task))
         .route("/tasks/{id}/progress", get(task_progress_sse))
         .route("/tasks/{id}/download-all", get(download_all_clips))
@@ -39,6 +40,7 @@ pub fn tasks_router() -> Router<AppState> {
         .route("/tasks/{id}/approve-edit-plan", post(approve_edit_plan))
         .route("/tasks/{id}/replan", post(replan_task))
         .route("/tasks/{id}/repurpose-pdf", get(repurpose_pdf))
+        .route("/tasks/{id}/publish", post(publish_task_video))
 }
 
 #[derive(Deserialize)]
@@ -96,6 +98,129 @@ async fn list_tasks(
     Ok(Json(json!({"tasks": tasks, "total": total})))
 }
 
+#[derive(Deserialize)]
+struct PublishVideoRequest {
+    #[serde(default)]
+    clip_id: Option<String>,
+    #[serde(default)]
+    platforms: Option<Vec<String>>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    uploadpost_key: Option<String>,
+}
+
+/// Publish a generated video (clip, AI Shorts final_video.mp4, or Repurpose
+/// platform variant) to one or more social platforms via Upload-Post.
+/// Mirrors the MCP `publish_clip` tool but as a plain REST endpoint so the
+/// frontend can offer one-click publishing.
+async fn publish_task_video(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<PublishVideoRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let task_id = id.to_string();
+
+    let task: Option<Task> = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = ?")
+        .bind(&task_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    if task.is_none() {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "Task not found"}))));
+    }
+
+    let api_key = req.uploadpost_key
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| std::env::var("UPLOADPOST_API_KEY").unwrap_or_default());
+    if api_key.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Missing Upload-Post API key — add it in Settings or pass uploadpost_key"})),
+        ));
+    }
+
+    let platforms: Vec<String> = req.platforms
+        .unwrap_or_else(|| vec!["youtube".to_string()])
+        .into_iter()
+        .filter(|p| matches!(p.as_str(), "youtube" | "tiktok" | "instagram"))
+        .collect();
+    if platforms.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "No supported platforms requested (youtube, tiktok, instagram)"})),
+        ));
+    }
+
+    let clips = sqlx::query_as::<_, GeneratedClip>(
+        "SELECT * FROM generated_clips WHERE task_id = ? ORDER BY clip_order ASC"
+    )
+    .bind(&task_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // Resolve the target video:
+    // 1. explicit clip_id → that clip
+    // 2. final_video.mp4 (AI Shorts / NovaEdit merged output)
+    // 3. a Repurpose variant whose filename matches a requested platform
+    // 4. fallback: highest-virality clip
+    let clip = if let Some(cid) = req.clip_id.as_deref().filter(|s| !s.is_empty()) {
+        clips.iter().find(|c| c.id == cid).cloned()
+    } else {
+        clips.iter().find(|c| c.filename == "final_video.mp4").cloned()
+            .or_else(|| {
+                platforms.iter().find_map(|p| {
+                    clips.iter().find(|c| c.filename == format!("{}_video.mp4", p)).cloned()
+                })
+            })
+            .or_else(|| clips.iter().max_by_key(|c| c.virality_score).cloned())
+    };
+    let Some(clip) = clip else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "No video found for this task — run a clip job first"})),
+        ));
+    };
+
+    let src = PathBuf::from(&clip.file_path);
+    if !src.exists() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("Video file not found on disk: {}", clip.file_path)})),
+        ));
+    }
+
+    let title = req.title
+        .filter(|t| !t.trim().is_empty())
+        .or_else(|| clip.hook_title.clone())
+        .unwrap_or_else(|| "NovaClip Short".to_string());
+    let description = req.description
+        .filter(|d| !d.trim().is_empty())
+        .or_else(|| clip.transcript_text.clone())
+        .unwrap_or_default();
+
+    let profile = match novaclip_worker::pipeline::uploadpost::resolve_profile(&api_key).await {
+        Ok(p) => p,
+        Err(e) => return Err((StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Failed to resolve Upload-Post profile: {}", e)})))),
+    };
+
+    match novaclip_worker::pipeline::uploadpost::publish_video(&api_key, &profile, &src, &title, &description, &platforms).await {
+        Ok(body) => Ok(Json(json!({
+            "status": "submitted",
+            "clip_id": clip.id,
+            "filename": clip.filename,
+            "title": title,
+            "profile": profile,
+            "platforms": platforms,
+            "response": body,
+        }))),
+        Err(e) => Err((StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Publish failed: {}", e)})))),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudioApiKeys {
     #[serde(default)]
@@ -112,6 +237,8 @@ pub struct StudioApiKeys {
     pub pixabay_key: Option<String>,
     #[serde(default)]
     pub wavespeed_key: Option<String>,
+    #[serde(default)]
+    pub uploadpost_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1385,6 +1512,88 @@ async fn generate_studio_script(
     }
 
     Ok(Json(json!({ "script": script })))
+}
+
+#[derive(Deserialize)]
+struct AnalyzeProductReq {
+    product_url: Option<String>,
+    product_description: Option<String>,
+    target_audience: Option<String>,
+    llm_provider: Option<String>,
+    api_key: Option<String>,
+}
+
+async fn analyze_product(
+    State(_state): State<AppState>,
+    Json(req): Json<AnalyzeProductReq>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let product_info = if let Some(ref url) = req.product_url.filter(|u| !u.trim().is_empty()) {
+        format!("Product URL: {}", url.trim())
+    } else if let Some(ref desc) = req.product_description.filter(|d| !d.trim().is_empty()) {
+        format!("Product description: {}", desc.trim())
+    } else {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "product_url or product_description is required"}))));
+    };
+
+    let audience = req.target_audience.filter(|a| !a.trim().is_empty()).unwrap_or_else(|| "general audience".into());
+    let provider = req.llm_provider.unwrap_or_else(|| "gemini-3.1-flash-lite".into());
+
+    let gemini_key = req.api_key
+        .filter(|k| !k.trim().is_empty() && !k.starts_with("sk-or-"))
+        .or_else(|| std::env::var("GEMINI_API_KEY").ok().filter(|k| !k.trim().is_empty()))
+        .unwrap_or_default();
+
+    if gemini_key.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "Gemini API key required"}))));
+    }
+
+    let gemini_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.1-flash-lite".into());
+
+    let prompt = format!(
+        "You are an expert AI video marketer creating UGC-style short-form video scripts.\n\n\
+         PRODUCT TO ANALYZE:\n{}\n\n\
+         TARGET AUDIENCE: {}\n\n\
+         Research and analyze this product, then create:\n\
+         1. A 45-60 second viral UGC video script following this structure:\n\
+            - Hook (5-8 seconds): Attention-grabbing opening that creates curiosity\n\
+            - Problem (8-12 seconds): Relatable pain point the product solves\n\
+            - Solution (15-20 seconds): How the product works and key benefits\n\
+            - CTA (5-8 seconds): Clear call to action\n\
+         2. A suggested topic/title for the video\n\
+         3. A description of the ideal AI actor for this video (age, gender, style, expression)\n\n\
+         Return JSON:\n\
+         {{\"script\": \"the full script text\", \"topic\": \"video title\", \"actor_description\": \"ideal actor description\"}}",
+        product_info, audience
+    );
+
+    let body = json!({
+        "systemInstruction": {"parts": [{"text": "You are an expert UGC video script writer. Return ONLY valid JSON."}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.8, "maxOutputTokens": 2048, "responseMimeType": "application/json"}
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        gemini_model, gemini_key
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client.post(&url).json(&body)
+        .timeout(std::time::Duration::from_secs(45))
+        .send().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Gemini error: {}", e)}))))?;
+
+    let text = resp.json::<Value>().await
+        .ok().and_then(|r| r.pointer("/candidates/0/content/parts/0/text")
+            .and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .ok_or_else(|| (StatusCode::BAD_GATEWAY, Json(json!({"error": "Empty Gemini response"}))))?;
+
+    let clean = text.trim().trim_start_matches("```json").trim_start_matches("```")
+        .trim_end_matches("```").trim();
+    let result: Value = serde_json::from_str(clean)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, Json(json!({"error": format!("Parse error: {}", e)}))))?;
+
+    Ok(Json(result))
 }
 
 #[derive(Deserialize)]
