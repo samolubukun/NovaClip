@@ -187,4 +187,15 @@ export const api = {
     if (!r.ok) throw new Error((await r.json()).error || r.statusText);
     return r.json();
   },
+
+  async publishVideo(taskId: string, payload: { clip_id?: string; platforms: string[]; title?: string; description?: string }) {
+    const uploadpostKey = localStorage.getItem("novaclip_uploadpost_key") || "";
+    const r = await fetch(`${API_BASE}/tasks/${taskId}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, ...(uploadpostKey ? { uploadpost_key: uploadpostKey } : {}) }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    return r.json();
+  },
 };
