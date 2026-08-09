@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, RefreshCw, XCircle, Play, Pause, Download, ExternalLink, Trash2, Copy, Zap, Flame, Radio, Mic, Brain, Crop, Sparkles, CheckCircle2, MessageCircle, Send, X, Film, Wand2, ListChecks, ThumbsUp, AlertTriangle } from "lucide-react";
+import { ArrowLeft, RefreshCw, XCircle, Play, Pause, Download, ExternalLink, Trash2, Copy, Zap, Flame, Radio, Mic, Brain, Crop, Sparkles, CheckCircle2, MessageCircle, Send, X, Film, Wand2, ListChecks, ThumbsUp, AlertTriangle, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
@@ -123,7 +123,7 @@ function HookTypeBadge({ hookType }: { hookType: string }) {
   );
 }
 
-function ClipCard({ clip, taskId, aspectRatio, isSelected, onSelect }: { clip: Clip; taskId: string; aspectRatio?: string; isSelected: boolean; onSelect: () => void }) {
+function ClipCard({ clip, taskId, aspectRatio, isSelected, onSelect, onPublish }: { clip: Clip; taskId: string; aspectRatio?: string; isSelected: boolean; onSelect: () => void; onPublish: () => void }) {
   const [playing, setPlaying] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -254,11 +254,14 @@ function ClipCard({ clip, taskId, aspectRatio, isSelected, onSelect }: { clip: C
         )}
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
           <a href={fileUrl} download={clip.filename} onClick={(e) => e.stopPropagation()} className="btn btn-primary btn-sm" style={{ flex: 1, background: "var(--accent)", color: "#000", fontWeight: 700 }}>
             <Download size={13} /> Download
           </a>
-          <button className="btn btn-ghost btn-icon btn-sm" onClick={deleteClip} title="Delete clip" style={{ color: "#ef4444" }}>
+          <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); onPublish(); }} title="Publish to social" style={{ background: "rgba(244,63,94,0.12)", color: "#fb7185", display: "flex", alignItems: "center", gap: "0.3rem", flexShrink: 0, padding: "0.5rem 0.75rem" }}>
+            <Upload size={13} /> Publish
+          </button>
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={deleteClip} title="Delete clip" style={{ color: "#ef4444", flexShrink: 0 }}>
             <Trash2 size={13} />
           </button>
         </div>
@@ -378,6 +381,7 @@ export default function TaskPage() {
   const [replanOpen, setReplanOpen] = useState(false);
   const [replanMsg, setReplanMsg] = useState("");
   const [replanLoading, setReplanLoading] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<{ kind: "clip"; clip: Clip } | { kind: "final" } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -443,6 +447,7 @@ export default function TaskPage() {
   }, [id]);
 
   const activeClip = task?.clips?.[selectedClipIndex] || task?.clips?.[0];
+  const finalClip = task?.clips?.find(c => c.filename === "final_video.mp4");
 
   const handleChatSend = async () => {
     const msg = chatInput.trim();
@@ -555,11 +560,13 @@ export default function TaskPage() {
           </div>
         ) : status !== "completed" && status !== "error" && task && (() => {
           const isStudio = task.source_url?.startsWith("studio://") || task.source_type === "studio";
+          const isShorts = isStudio && (task.source_url?.includes("ai-shorts") || task.source_type === "studio-ai-shorts");
+          const studioAccent = isShorts ? "#a855f7" : "#8b5cf6";
           if (isRepurpose) {
             return <RepurposeResult task={task} taskId={id!} />;
           }
-          const accent = isAgentic ? "rgba(34,211,238,1)" : isStudio ? "#8b5cf6" : "var(--accent)";
-          const accentSoft = isAgentic ? "rgba(34,211,238,0.15)" : isStudio ? "rgba(139,92,246,0.15)" : "rgba(255, 224, 0, 0.15)";
+          const accent = isAgentic ? "rgba(34,211,238,1)" : isStudio ? studioAccent : "var(--accent)";
+          const accentSoft = isAgentic ? "rgba(34,211,238,0.15)" : isStudio ? (isShorts ? "rgba(168,85,247,0.15)" : "rgba(139,92,246,0.15)") : "rgba(255, 224, 0, 0.15)";
           const PIPELINE_STAGES = isStudio ? [
             { id: "decompose", label: "AI Script Decompose", threshold: 10, Icon: Brain },
             { id: "tts", label: "Voice Synthesis", threshold: 30, Icon: Mic },
@@ -586,7 +593,7 @@ export default function TaskPage() {
               animate={{ opacity: 1, scale: 1 }}
               style={{
                 background: "#131318",
-                border: `1px solid ${isAgentic ? "rgba(34,211,238,0.25)" : isStudio ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.12)"}`,
+                border: `1px solid ${isAgentic ? "rgba(34,211,238,0.25)" : isStudio ? (isShorts ? "rgba(168,85,247,0.25)" : "rgba(139,92,246,0.2)") : "rgba(255,255,255,0.12)"}`,
                 borderRadius: "20px",
                 padding: "2rem 1.75rem",
                 marginBottom: "2rem",
@@ -596,7 +603,7 @@ export default function TaskPage() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.75rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                   <div style={{ width: 40, height: 40, borderRadius: "50%", background: accentSoft, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Radio size={20} color={isAgentic ? "#22d3ee" : isStudio ? "#8b5cf6" : "var(--accent)"} className="pulse" />
+                    <Radio size={20} color={isAgentic ? "#22d3ee" : isStudio ? studioAccent : "var(--accent)"} className="pulse" />
                   </div>
                   <div>
                     <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#fff" }}>{message || (isAgentic ? "Agentic Editing..." : isStudio ? "Generating AI Video..." : "Processing Video...")}</h3>
@@ -604,7 +611,7 @@ export default function TaskPage() {
                   </div>
                 </div>
                 <div style={{ background: `${accent}1f`, border: `1px solid ${accent}4d`, borderRadius: "999px", padding: "0.35rem 0.9rem" }}>
-                  <span style={{ fontSize: "1rem", fontWeight: 900, color: isAgentic ? "#22d3ee" : isStudio ? "#8b5cf6" : "var(--accent)" }}>{progress}%</span>
+                  <span style={{ fontSize: "1rem", fontWeight: 900, color: isAgentic ? "#22d3ee" : isStudio ? studioAccent : "var(--accent)" }}>{progress}%</span>
                 </div>
               </div>
 
@@ -635,7 +642,7 @@ export default function TaskPage() {
                       >
                         {isDone ? <CheckCircle2 size={20} color="#000" /> : <IconComponent size={20} color={isActive ? "#000" : "#666"} />}
                       </div>
-                      <span style={{ fontSize: "0.75rem", fontWeight: isActive ? 800 : 600, color: isActive ? (isAgentic ? "#22d3ee" : isStudio ? "#8b5cf6" : "var(--accent)") : isDone ? "#fff" : "#666", display: "block" }}>
+                      <span style={{ fontSize: "0.75rem", fontWeight: isActive ? 800 : 600, color: isActive ? (isAgentic ? "#22d3ee" : isStudio ? studioAccent : "var(--accent)") : isDone ? "#fff" : "#666", display: "block" }}>
                         {stg.label}
                       </span>
                     </div>
@@ -645,7 +652,7 @@ export default function TaskPage() {
 
               {/* Progress Track */}
               <div style={{ background: "#09090c", height: "8px", borderRadius: "4px", overflow: "hidden" }}>
-                <div style={{ width: `${progress}%`, background: isStudio ? "linear-gradient(90deg, #8b5cf6 0%, #22c55e 100%)" : "linear-gradient(90deg, var(--accent) 0%, #22c55e 100%)", height: "100%", transition: "width 0.4s ease-out" }} />
+                <div style={{ width: `${progress}%`, background: isStudio ? `linear-gradient(90deg, ${studioAccent} 0%, #22c55e 100%)` : "linear-gradient(90deg, var(--accent) 0%, #22c55e 100%)", height: "100%", transition: "width 0.4s ease-out" }} />
               </div>
             </motion.div>
           );
@@ -831,6 +838,9 @@ export default function TaskPage() {
                 <a href={`/api/tasks/${id}/download-all`} download={`novaclip_${id?.slice(0, 8)}.zip`} className="btn btn-secondary btn-md" style={{ background: "#1f1f28", color: "#fff", fontWeight: 700, padding: "0.45rem 0.85rem" }}>
                   <Download size={15} /> Download All (.zip)
                 </a>
+                <button onClick={() => setPublishTarget({ kind: "clip", clip: activeClip })} className="btn btn-md" style={{ background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 800, padding: "0.45rem 0.9rem", border: "none", borderRadius: "10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem" }}>
+                  <Upload size={14} /> Publish
+                </button>
               </div>
             </div>
           </div>
@@ -845,6 +855,11 @@ export default function TaskPage() {
               </h2>
               <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
                 <span style={{ fontSize: "0.8rem", color: "#888" }}>{task.aspect_ratio} • Sorted by virality</span>
+                {finalClip && (
+                  <button onClick={() => setPublishTarget({ kind: "final" })} className="btn btn-sm" style={{ background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontWeight: 800, border: "none", borderRadius: "8px", padding: "0.35rem 0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.75rem" }}>
+                    <Upload size={13} /> Publish Final Video
+                  </button>
+                )}
                 <a href={`/api/tasks/${id}/download-all`} download={`novaclip_${id?.slice(0, 8)}.zip`} className="btn btn-primary btn-sm" style={{ background: "var(--accent)", color: "#000", fontWeight: 800 }}>
                   <Download size={14} /> Download All (.zip)
                 </a>
@@ -860,6 +875,7 @@ export default function TaskPage() {
                   aspectRatio={task.aspect_ratio}
                   isSelected={selectedClipIndex === idx}
                   onSelect={() => setSelectedClipIndex(idx)}
+                  onPublish={() => setPublishTarget({ kind: "clip", clip })}
                 />
               ))}
             </div>
@@ -953,9 +969,13 @@ export default function TaskPage() {
         </div>
       )}
 
+      {/* Publish to Social Modal */}
+      {publishTarget && (
+        <PublishModal taskId={id!} target={publishTarget} onClose={() => setPublishTarget(null)} />
+      )}
+
       {/* NovaEdit: Replan Feedback Modal */}
-      {replanOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={() => setReplanOpen(false)}>
+      {replanOpen && (        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={() => setReplanOpen(false)}>
           <div style={{ background: "#131318", border: "1px solid rgba(34,211,238,0.35)", borderRadius: "16px", padding: "1.75rem", maxWidth: "520px", width: "100%", boxShadow: "0 30px 80px rgba(0,0,0,0.7)" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
               <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: 0, color: "#fff", display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -991,6 +1011,120 @@ export default function TaskPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const PUBLISH_PLATFORMS = [
+  { id: "youtube", label: "YouTube" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "instagram", label: "Instagram" },
+];
+
+function PublishModal({ taskId, target, onClose }: { taskId: string; target: { kind: "clip"; clip: Clip } | { kind: "final" }; onClose: () => void }) {
+  const [platforms, setPlatforms] = useState<string[]>(["youtube"]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    if (target.kind === "clip") {
+      setTitle(target.clip.hook_title || "NovaClip Short");
+      setDescription(target.clip.transcript_text || "");
+    } else {
+      setTitle("");
+      setDescription("");
+    }
+  }, [target]);
+
+  const hasKey = !!localStorage.getItem("novaclip_uploadpost_key");
+
+  const toggle = (p: string) =>
+    setPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+
+  const submit = async () => {
+    if (publishing) return;
+    setPublishing(true);
+    try {
+      const payload: { clip_id?: string; platforms: string[]; title?: string; description?: string } = {
+        platforms,
+        ...(title.trim() ? { title: title.trim() } : {}),
+        ...(description.trim() ? { description: description.trim() } : {}),
+      };
+      if (target.kind === "clip") payload.clip_id = target.clip.id;
+      const res = await api.publishVideo(taskId, payload);
+      toast.success(`Published to ${(res.platforms || []).join(", ")} via ${res.profile || "Upload-Post"} — upload submitted`);
+      onClose();
+    } catch (e: any) {
+      toast.error(e.message || "Publish failed");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
+      <div style={{ background: "#131318", border: "1px solid rgba(244,63,94,0.35)", borderRadius: "16px", padding: "1.75rem", maxWidth: "520px", width: "100%", boxShadow: "0 30px 80px rgba(0,0,0,0.7)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+          <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: 0, color: "#fff", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Upload size={18} color="#fb7185" /> Publish to Social
+          </h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", padding: "0.25rem" }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: "0.78rem", color: "#888", margin: "0 0 1rem", lineHeight: 1.5 }}>
+          {target.kind === "clip" ? `Publishing clip: ${target.clip.filename}` : "Publishing the final merged video"}
+        </p>
+
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+          {PUBLISH_PLATFORMS.map(p => {
+            const active = platforms.includes(p.id);
+            return (
+              <button key={p.id} onClick={() => toggle(p.id)} style={{
+                display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.9rem",
+                borderRadius: "999px", border: `1px solid ${active ? "#f43f5e" : "rgba(255,255,255,0.15)"}`,
+                background: active ? "rgba(244,63,94,0.15)" : "transparent",
+                color: active ? "#fb7185" : "#ccc", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer",
+              }}>
+                {active && <CheckCircle2 size={14} />}
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Title (defaults to clip hook title)"
+          maxLength={90}
+          style={{ width: "100%", boxSizing: "border-box", background: "#0b0b0e", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", padding: "0.7rem 0.85rem", fontSize: "0.85rem", color: "#fff", outline: "none", marginBottom: "0.75rem" }}
+        />
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          rows={3}
+          placeholder="Description (defaults to clip transcript)"
+          style={{ width: "100%", boxSizing: "border-box", background: "#0b0b0e", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", padding: "0.7rem 0.85rem", fontSize: "0.85rem", color: "#fff", outline: "none", resize: "vertical", fontFamily: "inherit", marginBottom: "1.25rem" }}
+        />
+
+        {!hasKey && (
+          <div style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "0.75rem 0.9rem", marginBottom: "1.25rem", fontSize: "0.78rem", color: "#fbbf24", lineHeight: 1.5 }}>
+            No Upload-Post API key set. Add it in Settings, or it falls back to the UPLOADPOST_API_KEY env var.
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "0.6rem 1.2rem", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "#ccc", fontSize: "0.82rem", fontWeight: 700, cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={submit} disabled={publishing || platforms.length === 0} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 1.4rem", borderRadius: "10px", border: "none", background: "linear-gradient(90deg,#f43f5e,#fb7185)", color: "#fff", fontSize: "0.85rem", fontWeight: 900, cursor: "pointer", opacity: publishing || platforms.length === 0 ? 0.5 : 1 }}>
+            {publishing ? "Publishing..." : <> <Upload size={15} /> Publish</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
