@@ -27,7 +27,7 @@ backend/novaclip_reframe/venv/
 # Downloaded models and binaries
 backend/yolo11n-seg.pt
 backend/yt-dlp.exe
-backend/models/
+backend/models/ggml-base.bin
 
 # Build artifacts
 *.tsbuildinfo
