@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Film, Sparkles, Wand2, Sliders, Play, RotateCcw, Upload, Image as ImageIcon,
-  Check, Volume2, Globe, Layers, Video, Zap, MessageSquare, Search
+  Check, Volume2, Globe, Layers, Video, Zap, MessageSquare, Search,
+  User, Bot, Target, ShoppingBag, Link2
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -70,16 +71,45 @@ export default function Studio() {
   const [subtitleStyle, setSubtitleStyle] = useState("high_retention");
   const [bgMusic, setBgMusic] = useState("none");
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"stock" | "ai">(() => (sessionStorage.getItem("nova_studio_mode") === "ai" ? "ai" : "stock"));
+  const [mode, setMode] = useState<"stock" | "ai" | "ai-shorts">(() => {
+    const v = sessionStorage.getItem("nova_studio_mode");
+    if (v === "ai") return "ai";
+    if (v === "ai-shorts") return "ai-shorts";
+    return "stock";
+  });
 
-  const handleModeChange = (m: "stock" | "ai") => {
+  // AI Shorts-specific state
+  const [shortsProductUrl, setShortsProductUrl] = useState("");
+  const [shortsProductDesc, setShortsProductDesc] = useState("");
+  const [shortsTargetAudience, setShortsTargetAudience] = useState("");
+  const [shortsCtaText, setShortsCtaText] = useState("");
+  const [shortsCostMode, setShortsCostMode] = useState<"low" | "premium">("low");
+  const [shortsActorSource, setShortsActorSource] = useState<"generate" | "gallery">("generate");
+  const [shortsActorDesc, setShortsActorDesc] = useState("");
+  const [shortsAnalyzeStatus, setShortsAnalyzeStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [shortsAutoPublish, setShortsAutoPublish] = useState(false);
+  const [shortsPublishProfile, setShortsPublishProfile] = useState("");
+
+  const handleModeChange = (m: "stock" | "ai" | "ai-shorts") => {
     setMode(m);
-    if (m === "ai" && ttsProvider === "edge-tts") {
+    if (m === "ai-shorts") {
+      setTtsProvider("elevenlabs");
+    } else if (m === "ai" && ttsProvider === "edge-tts") {
       setTtsProvider("deepgram-aura");
     }
     sessionStorage.setItem("nova_studio_mode", m);
     window.dispatchEvent(new Event("nova-studio-mode-change"));
   };
+
+  // AI Shorts runs on WaveSpeed + ElevenLabs only — keep the TTS provider in
+  // sync with the mode (also covers reloading the page straight into a mode).
+  useEffect(() => {
+    if (mode === "ai-shorts") {
+      setTtsProvider("elevenlabs");
+    } else if (mode === "ai") {
+      setTtsProvider(p => (p === "edge-tts" ? "deepgram-aura" : p));
+    }
+  }, [mode]);
 
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [watermarkPreviewUrl, setWatermarkPreviewUrl] = useState<string | null>(null);
@@ -188,28 +218,148 @@ export default function Studio() {
     }
   };
 
+  const handleCreateShortsVideo = async () => {
+    if (!script.trim()) {
+      toast.error("Please enter or generate a video script first");
+      return;
+    }
+    if (!localStorage.getItem("novaclip_wavespeed_key")) {
+      toast.error("AI Shorts requires a WaveSpeed API key. Add it in Settings first.");
+      return;
+    }
+    if (!localStorage.getItem("novaclip_elevenlabs_key") && ttsProvider === "elevenlabs") {
+      toast.error("AI Shorts uses ElevenLabs TTS — add your ElevenLabs API key in Settings first.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const videoTitle = topic.trim()
+        ? topic.trim().slice(0, 80)
+        : shortsProductDesc.trim()
+          ? shortsProductDesc.trim().slice(0, 80)
+          : script.trim().split(/\s+/).slice(0, 10).join(" ").slice(0, 80);
+
+      const payload = {
+        script: script.trim(),
+        mode: "ai-shorts",
+        aspect_ratio: aspectRatio,
+        llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
+        tts_provider: ttsProvider,
+        voice: ttsProvider === "elevenlabs" ? elevenVoiceId : ttsProvider === "deepgram-aura" ? deepgramVoice : voiceName,
+        duration: Number(duration),
+        subtitle_style: subtitleStyle,
+        bg_music: "none",
+        shorts_payload: {
+          product_url: shortsProductUrl.trim(),
+          product_description: shortsProductDesc.trim(),
+          target_audience: shortsTargetAudience.trim(),
+          cta_text: shortsCtaText.trim(),
+          cost_mode: shortsCostMode,
+          actor_source: shortsActorSource,
+          actor_description: shortsActorDesc.trim(),
+          publish: shortsAutoPublish,
+          uploadpost_profile: shortsPublishProfile.trim(),
+        },
+        api_keys: {
+          gemini_key: localStorage.getItem("novaclip_gemini_key") || "",
+          openrouter_key: localStorage.getItem("novaclip_openrouter_key") || "",
+          deepgram_key: localStorage.getItem("novaclip_deepgram_key") || "",
+          elevenlabs_key: localStorage.getItem("novaclip_elevenlabs_key") || "",
+          pexels_key: localStorage.getItem("novaclip_pexels_key") || "",
+          pixabay_key: localStorage.getItem("novaclip_pixabay_key") || "",
+          wavespeed_key: localStorage.getItem("novaclip_wavespeed_key") || "",
+          uploadpost_key: localStorage.getItem("novaclip_uploadpost_key") || "",
+        }
+      };
+
+      const task = await api.createTask({
+        url: "studio://ai-shorts",
+        source_title: videoTitle,
+        aspect_ratio: aspectRatio,
+        num_clips: 1,
+        llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
+        font_family: "THEBOLDFONT",
+        font_size: 28,
+        font_color: "#ffffff",
+        highlight_color: "#a855f7",
+        caption_animation: "word_pop",
+        auto_emojis: true,
+        studio_payload: payload,
+      });
+
+      sessionStorage.setItem("nova_last_task_type", "studio");
+      toast.success("AI Shorts task created! Check the task page for progress.");
+      navigate(`/task/${task.task_id}`);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to start AI Shorts task");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnalyzeProduct = async () => {
+    if (!shortsProductUrl.trim() && !shortsProductDesc.trim()) {
+      setShortsAnalyzeStatus("error");
+      return;
+    }
+    setShortsAnalyzeStatus("loading");
+    try {
+      const apiKey = localStorage.getItem("novaclip_gemini_key") || localStorage.getItem("novaclip_openrouter_key") || "";
+      const res = await fetch("/studio/analyze_product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_url: shortsProductUrl.trim(),
+          product_description: shortsProductDesc.trim(),
+          target_audience: shortsTargetAudience.trim(),
+          llm_provider: llmProvider === "gemini" ? llmModel : llmModel === "custom" ? customLlmModel : llmModel,
+          api_key: apiKey,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Analysis failed");
+      if (data.script) setScript(data.script);
+      if (data.topic) setTopic(data.topic);
+      if (data.actor_description) setShortsActorDesc(data.actor_description);
+      setShortsAnalyzeStatus("done");
+      toast.success("Product analyzed! Script generated.");
+    } catch (e: any) {
+      setShortsAnalyzeStatus("error");
+      toast.error(e.message || "Failed to analyze product");
+    }
+  };
+
+  const accentColor = mode === "ai-shorts" ? "#a855f7" : mode === "ai" ? "#d946ef" : "#8b5cf6";
+  const accentRgb = mode === "ai-shorts" ? "168,85,247" : mode === "ai" ? "217,70,239" : "139,92,246";
+
   return (
     <div
       style={{
         maxWidth: "1280px",
         margin: "0 auto",
         padding: "1.5rem 1rem",
-        ["--accent" as any]: mode === "ai" ? "#d946ef" : "#8b5cf6",
-        ["--accent-rgb" as any]: mode === "ai" ? "217,70,239" : "139,92,246",
+        ["--accent" as any]: accentColor,
+        ["--accent-rgb" as any]: accentRgb,
       }}
     >
       {/* Header Banner */}
       <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "rgba(var(--accent-rgb),0.1)", border: "1px solid rgba(var(--accent-rgb),0.3)", padding: "0.4rem 1rem", borderRadius: "20px", color: "var(--accent)", fontSize: "0.78rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "2.3rem" }}>
-          <Film size={14} /> Nova Studio: Faceless AI Creator
+          {mode === "ai-shorts" ? <Bot size={14} /> : <Film size={14} />} Nova Studio: {mode === "ai-shorts" ? "AI Shorts Pipeline" : "Faceless AI Creator"}
         </div>
         <h1 style={{ fontSize: "clamp(1.8rem, 3.8vw, 3.2rem)", fontWeight: 900, lineHeight: 1.1, marginBottom: "0.75rem", letterSpacing: "-0.03em", color: "#fff" }}>
-          Generate Viral <span style={{ color: "var(--accent)", textShadow: "0 0 35px rgba(var(--accent-rgb),0.3)" }}>Faceless AI Videos</span>
+          {mode === "ai-shorts" ? (
+            <>Generate <span style={{ color: "var(--accent)", textShadow: "0 0 35px rgba(var(--accent-rgb),0.3)" }}>AI Actor Videos</span></>
+          ) : (
+            <>Generate Viral <span style={{ color: "var(--accent)", textShadow: "0 0 35px rgba(var(--accent-rgb),0.3)" }}>Faceless AI Videos</span></>
+          )}
         </h1>
         <p style={{ fontSize: "1.05rem", color: "#a1a1aa", maxWidth: "680px", margin: "0 auto" }}>
-          {mode === "stock"
-            ? "Turn scripts or AI topics into complete short-form clips with automated stock media scraping, multi-provider neural voiceovers, and animated karaoke captions."
-            : "Turn scripts or AI topics into short-form clips with AI-generated scenes, neural voiceovers, and word-synced animated captions."}
+          {mode === "ai-shorts"
+            ? "Full AI Shorts pipeline: product analysis → viral script → AI actor → talking head video → B-roll → composite. Powered by Wavespeed."
+            : mode === "stock"
+              ? "Turn scripts or AI topics into complete short-form clips with automated stock media scraping, multi-provider neural voiceovers, and animated karaoke captions."
+              : "Turn scripts or AI topics into short-form clips with AI-generated scenes, neural voiceovers, and word-synced animated captions."}
         </p>
       </div>
 
@@ -242,6 +392,19 @@ export default function Studio() {
           >
             <Wand2 size={16} /> AI B-Roll
           </button>
+          <button
+            type="button"
+            onClick={() => handleModeChange("ai-shorts")}
+            style={{
+              display: "flex", alignItems: "center", gap: "0.45rem", padding: "0.55rem 1.1rem", borderRadius: "10px",
+              border: "none", cursor: "pointer", fontWeight: 800, fontSize: "0.85rem",
+              background: mode === "ai-shorts" ? "#a855f7" : "transparent",
+              color: mode === "ai-shorts" ? "#fff" : "#888",
+              boxShadow: mode === "ai-shorts" ? "0 0 18px rgba(168,85,247,0.4)" : "none",
+            }}
+          >
+            <Bot size={16} /> AI Shorts
+          </button>
         </div>
       </div>
 
@@ -255,6 +418,28 @@ export default function Studio() {
         </div>
       )}
 
+      {mode === "ai-shorts" && (
+        <div style={{ margin: "0 auto 1.5rem", maxWidth: "760px", padding: "0.9rem 1.1rem", borderRadius: "12px", background: "rgba(var(--accent-rgb),0.08)", border: "1px solid rgba(var(--accent-rgb),0.25)", color: "#e9d5ff", fontSize: "0.8rem", fontWeight: 600, lineHeight: 1.5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "0.5rem" }}>
+            <Bot size={16} style={{ flexShrink: 0 }} />
+            <span>
+              AI Shorts runs entirely on <b>WaveSpeed</b> models (voiceover via <b>ElevenLabs</b>). Requires WaveSpeed + ElevenLabs keys in{" "}
+              <span onClick={() => document.querySelector<HTMLButtonElement>("[data-open-settings]")?.click()} style={{ color: "#fff", textDecoration: "underline", cursor: "pointer" }}>Settings</span>.
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem 1rem", fontSize: "0.74rem", color: "#d8b4fe" }}>
+            <div><b>Flux 2 Pro</b> — AI actor portrait</div>
+            <div><code style={{ fontSize: "0.68rem" }}>wavespeed-ai/flux-2-pro/text-to-image</code></div>
+            <div><b>AI Talking Photos</b> — lip-synced talking head</div>
+            <div><code style={{ fontSize: "0.68rem" }}>wavespeed-ai/ai-talking-photos</code></div>
+            <div><b>InfiniteTalk</b> — premium audio lip-sync</div>
+            <div><code style={{ fontSize: "0.68rem" }}>wavespeed-ai/infinitetalk-fast</code></div>
+            <div><b>Seedance v1 Pro</b> — AI B-roll per sentence</div>
+            <div><code style={{ fontSize: "0.68rem" }}>bytedance/seedance-v1-pro-fast/text-to-video</code></div>
+          </div>
+        </div>
+      )}
+
       {/* 2-Column Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: "1.75rem", alignItems: "start" }}>
         
@@ -264,42 +449,163 @@ export default function Studio() {
             
             {/* AI Topic Prompt */}
             <div style={{ marginBottom: "1.25rem" }}>
-              <label style={{ display: "block", fontSize: "0.82rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>Video Topic / Idea</label>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontSize: "0.82rem", color: "#aaa", fontWeight: 700, marginBottom: "0.4rem" }}>
+                {mode === "ai-shorts" ? "Product URL to Analyze" : "Video Topic / Idea"}
+              </label>
+              {mode === "ai-shorts" ? (
+                <>
+                  <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="https://your-product.com — AI will scrape, research, and generate a script"
+                      value={shortsProductUrl}
+                      onChange={e => setShortsProductUrl(e.target.value)}
+                      style={{ flex: 1, fontSize: "0.88rem" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeProduct}
+                      disabled={shortsAnalyzeStatus === "loading"}
+                      style={{ background: "var(--accent)", color: "#000", fontWeight: 900, border: "none", borderRadius: "10px", padding: "0.6rem 1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", whiteSpace: "nowrap" }}
+                    >
+                      {shortsAnalyzeStatus === "loading" ? <div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /> : <Search size={16} />}
+                      <span>Analyze</span>
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Target audience (e.g., SaaS founders, Gen Z shoppers)"
+                      value={shortsTargetAudience}
+                      onChange={e => setShortsTargetAudience(e.target.value)}
+                      style={{ fontSize: "0.85rem" }}
+                    />
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Call to action (e.g., Sign up free, Shop now)"
+                      value={shortsCtaText}
+                      onChange={e => setShortsCtaText(e.target.value)}
+                      style={{ fontSize: "0.85rem" }}
+                    />
+                  </div>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    placeholder="Or describe your product manually... (overrides URL analysis)"
+                    value={shortsProductDesc}
+                    onChange={e => setShortsProductDesc(e.target.value)}
+                    style={{ width: "100%", fontSize: "0.85rem", resize: "vertical" }}
+                  />
+                </>
+              ) : (
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g., 5 Mind-Blowing Secrets About Space Exploration...  (or type directly in the script box below)"
+                    value={topic}
+                    onChange={e => setTopic(e.target.value)}
+                    style={{ flex: 1, fontSize: "0.88rem" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateScriptWithAI}
+                    disabled={scriptStatus === "loading"}
+                    style={{ background: "var(--accent)", color: "#fff", fontWeight: 900, border: "none", borderRadius: "10px", padding: "0.6rem 1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem" }}
+                  >
+                    {scriptStatus === "loading" ? <div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /> : <Sparkles size={16} />}
+                    <span>Generate</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* AI Shorts: Actor & Cost Mode */}
+            {mode === "ai-shorts" && shortsAnalyzeStatus === "done" && (
+              <div style={{ marginBottom: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", color: "#aaa", fontWeight: 700, marginBottom: "0.3rem" }}>Actor Source</label>
+                  <div style={{ display: "flex", gap: "0.3rem", background: "#08080a", borderRadius: "8px", padding: "0.25rem", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    {(["generate", "gallery"] as const).map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setShortsActorSource(s)}
+                        style={{
+                          flex: 1, padding: "0.4rem 0.5rem", borderRadius: "6px", border: "none", cursor: "pointer",
+                          fontSize: "0.75rem", fontWeight: 700,
+                          background: shortsActorSource === s ? "var(--accent)" : "transparent",
+                          color: shortsActorSource === s ? "#000" : "#888",
+                        }}
+                      >
+                        {s === "generate" ? "Generate AI Actor" : "Gallery"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", color: "#aaa", fontWeight: 700, marginBottom: "0.3rem" }}>Cost Mode</label>
+                  <div style={{ display: "flex", gap: "0.3rem", background: "#08080a", borderRadius: "8px", padding: "0.25rem", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    {(["low", "premium"] as const).map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setShortsCostMode(c)}
+                        style={{
+                          flex: 1, padding: "0.4rem 0.5rem", borderRadius: "6px", border: "none", cursor: "pointer",
+                          fontSize: "0.75rem", fontWeight: 700,
+                          background: shortsCostMode === c ? "var(--accent)" : "transparent",
+                          color: shortsCostMode === c ? "#000" : "#888",
+                        }}
+                      >
+                        {c === "low" ? "Low Cost" : "Premium"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* AI Shorts: Auto-publish to YouTube via Upload-Post */}
+            {mode === "ai-shorts" && shortsAnalyzeStatus === "done" && (
+              <div style={{ marginBottom: "1rem", padding: "0.7rem 0.8rem", borderRadius: "8px", background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, color: "#e9d5ff" }}>
+                  <input
+                    type="checkbox"
+                    checked={shortsAutoPublish}
+                    onChange={e => setShortsAutoPublish(e.target.checked)}
+                    style={{ accentColor: "#a855f7", width: "15px", height: "15px", cursor: "pointer" }}
+                  />
+                  Auto-publish to YouTube after render (Upload-Post)
+                </label>
                 <input
                   type="text"
                   className="input"
-                  placeholder="e.g., 5 Mind-Blowing Secrets About Space Exploration...  (or type directly in the script box below)"
-                  value={topic}
-                  onChange={e => setTopic(e.target.value)}
-                  style={{ flex: 1, fontSize: "0.88rem" }}
+                  placeholder="Upload-Post profile username (optional — auto-detected if blank)"
+                  value={shortsPublishProfile}
+                  onChange={e => setShortsPublishProfile(e.target.value)}
+                  style={{ width: "100%", marginTop: "0.5rem", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
                 />
-                <button
-                  type="button"
-                  onClick={handleGenerateScriptWithAI}
-                  disabled={scriptStatus === "loading"}
-                  style={{ background: "var(--accent)", color: "#fff", fontWeight: 900, border: "none", borderRadius: "10px", padding: "0.6rem 1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem" }}
-                >
-                  {scriptStatus === "loading" ? <div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /> : <Sparkles size={16} />}
-                  <span>Generate</span>
-                </button>
               </div>
-            </div>
+            )}
 
             {/* Inline generation status */}
-            {scriptStatus === "loading" && (
+            {(scriptStatus === "loading" || shortsAnalyzeStatus === "loading") && (
               <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px", background: "rgba(var(--accent-rgb),0.08)", border: "1px solid rgba(var(--accent-rgb),0.2)", color: "var(--accent)", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <div className="spinner" style={{ width: "14px", height: "14px", borderWidth: "2px", borderColor: "var(--accent)", borderTopColor: "transparent", flexShrink: 0 }} /> Generating script from topic...
+                <div className="spinner" style={{ width: "14px", height: "14px", borderWidth: "2px", borderColor: "var(--accent)", borderTopColor: "transparent", flexShrink: 0 }} /> {shortsAnalyzeStatus === "loading" ? "Analyzing product & generating script..." : "Generating script from topic..."}
               </div>
             )}
-            {scriptStatus === "done" && (
+            {(scriptStatus === "done" || shortsAnalyzeStatus === "done") && (
               <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px", background: "rgba(0,255,100,0.08)", border: "1px solid rgba(0,255,100,0.2)", color: "#00ff64", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <Check size={14} /> Script generated. Review and edit below, then configure settings and generate video.
+                <Check size={14} /> {shortsAnalyzeStatus === "done" ? "Product analyzed! Review the script, configure your actor and settings below." : "Script generated. Review and edit below, then configure settings and generate video."}
               </div>
             )}
-            {scriptStatus === "error" && (
+            {(scriptStatus === "error" || shortsAnalyzeStatus === "error") && (
               <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "8px", background: "rgba(255,50,50,0.08)", border: "1px solid rgba(255,50,50,0.2)", color: "#ff5050", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                <span style={{ fontWeight: 900 }}>!</span> {scriptError}
+                <span style={{ fontWeight: 900 }}>!</span> {scriptError || "Analysis failed"}
               </div>
             )}
 
@@ -322,7 +628,7 @@ export default function Studio() {
           {/* Grid Settings */}
           <div style={{ background: "#0c0c0f", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "20px", padding: "1.5rem" }}>
             <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#fff", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <Sliders size={16} color="var(--accent)" /> Studio Pipeline Settings
+              <Sliders size={16} color="var(--accent)" /> {mode === "ai-shorts" ? "AI Shorts Pipeline Settings" : "Studio Pipeline Settings"}
             </h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", marginBottom: "1.25rem" }}>
@@ -378,7 +684,7 @@ export default function Studio() {
                   onChange={e => { const v = e.target.value; setTtsProvider(v); if (v === "edge-tts") setVoiceName("en-US-ChristopherNeural"); }}
                   style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "10px", padding: "0.55rem 0.75rem", fontSize: "0.82rem", fontWeight: 600 }}
                 >
-                  {TTS_PROVIDERS.filter(t => mode !== "ai" || t.id === "elevenlabs" || t.id === "deepgram-aura").map(t => (
+                  {TTS_PROVIDERS.filter(t => mode === "stock" ? true : mode === "ai-shorts" ? t.id === "elevenlabs" : t.id === "elevenlabs" || t.id === "deepgram-aura").map(t => (
                     <option key={t.id} value={t.id}>{t.label}</option>
                   ))}
                 </select>
@@ -407,7 +713,7 @@ export default function Studio() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: mode === "ai" ? "1fr 1fr" : "1fr 1fr 1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: mode === "ai-shorts" ? "1fr 1fr 1fr" : mode === "ai" ? "1fr 1fr" : "1fr 1fr 1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
               {/* Target Duration */}
               <div>
                 <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Target Duration</label>
@@ -423,6 +729,21 @@ export default function Studio() {
                   <option value="120">120s Long</option>
                 </select>
               </div>
+
+              {/* AI Shorts: Actor description */}
+              {mode === "ai-shorts" && shortsAnalyzeStatus === "done" && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Actor Description</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Describe your AI actor look..."
+                    value={shortsActorDesc}
+                    onChange={e => setShortsActorDesc(e.target.value)}
+                    style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
+                  />
+                </div>
+              )}
 
               {/* Media Type */}
               {mode === "stock" && (
@@ -455,6 +776,23 @@ export default function Studio() {
                 </div>
               )}
 
+              {/* Subtitle Style */}
+              {(mode === "stock" || mode === "ai-shorts") && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Subtitle Style</label>
+                  <select
+                    value={subtitleStyle}
+                    onChange={e => setSubtitleStyle(e.target.value)}
+                    style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
+                  >
+                    <option value="high_retention">Hormozi High-Retention</option>
+                    <option value="yellow_box">Yellow Highlight Box</option>
+                    <option value="bold_outline">Bold Black Outline</option>
+                    <option value="minimal">Minimal White</option>
+                  </select>
+                </div>
+              )}
+
               {/* Vibe Mode */}
               {mode === "stock" && (
                 <div>
@@ -473,22 +811,7 @@ export default function Studio() {
                 </div>
               )}
 
-              {/* Subtitle Style */}
-              {mode === "stock" && (
-                <div>
-                  <label style={{ display: "block", fontSize: "0.75rem", color: "#888", fontWeight: 600, marginBottom: "0.3rem" }}>Subtitle Style</label>
-                  <select
-                    value={subtitleStyle}
-                    onChange={e => setSubtitleStyle(e.target.value)}
-                    style={{ width: "100%", background: "#131318", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "0.4rem", fontSize: "0.78rem" }}
-                  >
-                    <option value="high_retention">Hormozi High-Retention</option>
-                    <option value="yellow_box">Yellow Highlight Box</option>
-                    <option value="bold_outline">Bold Black Outline</option>
-                    <option value="minimal">Minimal White</option>
-                  </select>
-                </div>
-              )}
+
             </div>
             {mode === "stock" && (
               <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
@@ -561,7 +884,7 @@ export default function Studio() {
             {/* Submit Button */}
             <button
               type="button"
-              onClick={handleCreateStudioVideo}
+              onClick={mode === "ai-shorts" ? handleCreateShortsVideo : handleCreateStudioVideo}
               disabled={loading}
               style={{
                 width: "100%", background: "var(--accent)", color: "#fff", fontWeight: 900,
@@ -573,7 +896,7 @@ export default function Studio() {
               {loading ? (
                 <><div className="spinner" style={{ borderColor: "#000", borderTopColor: "transparent" }} /><span>Generating Video Engine...</span></>
               ) : (
-                <>{mode === "ai" ? <Wand2 size={20} /> : <Film size={20} />}<span>{mode === "ai" ? "Generate AI B-Roll Video" : "Generate Faceless AI Video"}</span></>
+                <>{mode === "ai-shorts" ? <Bot size={20} /> : mode === "ai" ? <Wand2 size={20} /> : <Film size={20} />}<span>{mode === "ai-shorts" ? "Generate AI Shorts Video" : mode === "ai" ? "Generate AI B-Roll Video" : "Generate Faceless AI Video"}</span></>
               )}
             </button>
 
@@ -590,13 +913,24 @@ export default function Studio() {
             </div>
 
             <p style={{ color: "#aaa", fontSize: "0.78rem", lineHeight: 1.5, margin: "0 0 1.25rem" }}>
-              {mode === "stock"
-                ? "From an idea to a finished faceless video, each stage prepares the next one automatically."
-                : "AI B-Roll replaces stock footage with AI-generated clips and music tailored to your script."}
+              {mode === "ai-shorts"
+                ? "Full UGC video pipeline: from product URL to a finished AI actor video with talking head, B-roll, and captions."
+                : mode === "stock"
+                  ? "From an idea to a finished faceless video, each stage prepares the next one automatically."
+                  : "AI B-Roll replaces stock footage with AI-generated clips and music tailored to your script."}
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem", marginBottom: "1.25rem" }}>
-              {(mode === "stock" ? [
+              {(mode === "ai-shorts" ? [
+                { number: "01", icon: Globe, title: "Analyze product", text: "Gemini scrapes the URL + web research to understand the product, audience, and value prop." },
+                { number: "02", icon: MessageSquare, title: "Write viral script", text: "AI generates a hook-problem-solution-CTA script optimized for short-form engagement." },
+                { number: "03", icon: User, title: "Generate AI actor", text: "Flux 2 Pro on WaveSpeed creates a photorealistic AI portrait for the talking head." },
+                { number: "04", icon: Volume2, title: "Create voiceover", text: "ElevenLabs or Deepgram neural TTS reads the script with natural intonation." },
+                { number: "05", icon: Bot, title: "Animate talking head", text: "AI Talking Photos on WaveSpeed lip-syncs the actor portrait to the voiceover audio." },
+                { number: "06", icon: Video, title: "Generate B-roll", text: "Seedance on WaveSpeed renders product/situational clips. Flux images with Ken Burns as fallback." },
+                { number: "07", icon: Layers, title: "Composite & captions", text: "FFmpeg stitches talking head + B-roll, burns karaoke captions, and adds music." },
+                { number: "08", icon: Zap, title: "Publish-ready output", text: "Final 9:16 video with hook overlays, CTA, subtitles, and watermark — ready to post." },
+              ] : mode === "stock" ? [
                 { number: "01", icon: MessageSquare, title: "Shape the story", text: "Gemini turns your topic into a structured script with the right length and tone." },
                 { number: "02", icon: Volume2, title: "Create the voiceover", text: "Your selected neural voice reads the script as one continuous narration." },
                 { number: "03", icon: Search, title: "Gather supporting visuals", text: "Nova Studio searches your selected stock sources for footage or photos in the chosen vibe." },
@@ -624,12 +958,17 @@ export default function Studio() {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "1rem" }}>
-              {[
+              {(mode === "ai-shorts" ? [
+                ["Output", aspectRatio],
+                ["Duration", `${duration}s`],
+                ["Voice", ttsProvider === "elevenlabs" ? "ElevenLabs" : "Deepgram Aura"],
+                ["Cost", shortsCostMode === "low" ? "~$0.65/video" : "~$2/video"],
+              ] : [
                 ["Output", aspectRatio],
                 ["Duration", `${duration}s`],
                 ["Voice", ttsProvider === "edge-tts" ? "Edge-TTS" : ttsProvider === "elevenlabs" ? "ElevenLabs" : "Deepgram Aura"],
                 ["Visuals", mode === "ai" ? "AI clips" : mediaType === "video" ? "HD video" : "Photos"],
-              ].map(([label, value]) => (
+              ]).map(([label, value]) => (
                 <div key={label} style={{ background: "rgba(0,0,0,0.25)", borderRadius: "8px", padding: "0.55rem 0.65rem" }}>
                   <div style={{ color: "#777", fontSize: "0.62rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
                   <div style={{ color: "#c4b5fd", fontSize: "0.75rem", fontWeight: 800, marginTop: "0.15rem" }}>{value}</div>
@@ -645,12 +984,17 @@ export default function Studio() {
       <section style={{ borderTop: "1px solid rgba(var(--accent-rgb),0.18)", background: "#0b0b0e", padding: "2.2rem 0", marginTop: "2.5rem" }}>
         <div className="container" style={{ maxWidth: "1200px", margin: "0 auto", padding: "0 1.5rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "1.5rem", textAlign: "center" }}>
-            {[
+            {(mode === "ai-shorts" ? [
+              { key: "ANALYZE", color: "var(--accent)", text: "Product research & scripting" },
+              { key: "ACTOR", color: "#c084fc", text: "AI-generated portrait" },
+              { key: "SPEAK", color: "#a855f7", text: "Lip-synced talking head" },
+              { key: "FINISH", color: "#9333ea", text: "B-roll, captions, composite" },
+            ] : [
               { key: "SCRIPT", color: "var(--accent)", text: "AI-shaped storytelling" },
               { key: "VOICE", color: mode === "ai" ? "var(--accent)" : "#a78bfa", text: "Natural neural narration" },
               { key: "VISUALS", color: mode === "ai" ? "var(--accent)" : "#c4b5fd", text: mode === "ai" ? "AI-generated scenes" : "Stock media matched to your vibe" },
               { key: "FINISH", color: mode === "ai" ? "var(--accent)" : "#ddd6fe", text: mode === "ai" ? "AI music, captions, branding" : "Captions, music, and branding" },
-            ].map(({ key, color, text }) => (
+            ]).map(({ key, color, text }) => (
               <div key={key}>
                 <h4 style={{ fontSize: "1.35rem", fontWeight: 900, color, margin: 0 }}>{key}</h4>
                 <p style={{ fontSize: "0.78rem", color: "#888", margin: "0.35rem 0 0" }}>{text}</p>
