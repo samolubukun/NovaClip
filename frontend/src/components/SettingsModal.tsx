@@ -15,6 +15,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [pexelsKey, setPexelsKey] = useState("");
   const [pixabayKey, setPixabayKey] = useState("");
   const [wavespeedKey, setWavespeedKey] = useState("");
+  const [uploadpostKey, setUploadpostKey] = useState("");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setPexelsKey(localStorage.getItem("novaclip_pexels_key") || "");
       setPixabayKey(localStorage.getItem("novaclip_pixabay_key") || "");
       setWavespeedKey(localStorage.getItem("novaclip_wavespeed_key") || "");
+      setUploadpostKey(localStorage.getItem("novaclip_uploadpost_key") || "");
       setSaved(false);
     }
   }, [isOpen]);
@@ -42,6 +44,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     localStorage.setItem("novaclip_pexels_key", pexelsKey.trim());
     localStorage.setItem("novaclip_pixabay_key", pixabayKey.trim());
     localStorage.setItem("novaclip_wavespeed_key", wavespeedKey.trim());
+    localStorage.setItem("novaclip_uploadpost_key", uploadpostKey.trim());
     setSaved(true);
     setTimeout(() => {
       onClose();
@@ -224,7 +227,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               onChange={(e) => setWavespeedKey(e.target.value)}
               style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem" }}
             />
-            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for AI B-Roll clips (bytedance/seedance-v1-pro-fast) & AI background music (Lyria) in Studio</span>
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for AI B-Roll clips (Seedance), AI Shorts (Flux 2 Pro, AI Talking Photos, InfiniteTalk) & Lyria music</span>
+          </div>
+
+          {/* Upload-Post API Key */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", fontWeight: 600 }}>
+                <Key size={14} color="var(--accent, #FFE000)" /> Upload-Post API Key
+              </label>
+              <a href="https://app.upload-post.com/api-keys" target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.72rem", color: "var(--accent)", textDecoration: "underline" }}>Get Key ↗</a>
+            </div>
+            <input
+              type="password"
+              className="input"
+              placeholder="Upload-Post key..."
+              value={uploadpostKey}
+              onChange={(e) => setUploadpostKey(e.target.value)}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: "0.82rem" }}
+            />
+            <span style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem", display: "block" }}>Used for one-click publishing to TikTok, Instagram Reels, and YouTube Shorts (10 free uploads/month)</span>
           </div>
         </div>
 
