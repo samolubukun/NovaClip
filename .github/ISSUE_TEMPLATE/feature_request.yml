@@ -1,0 +1,58 @@
+name: ✨ Feature request
+description: Suggest a new feature or improvement for NovaClip
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please fill out the form below.
+        See the [Roadmap](https://github.com/samolubukun/NovaClip/blob/main/README.md#%F0%9F%97%93%EF%B8%8F-roadmap) for existing directions.
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode / feature involved
+      description: Which part of NovaClip does this relate to?
+      options:
+        - Nova Clipper (clip generation)
+        - Nova Studio - Stock B-Roll
+        - Nova Studio - AI B-Roll
+        - Nova Studio - AI Shorts
+        - Nova Edit (agentic editor)
+        - Nova Repurpose
+        - YouTube Studio (Thumbnails / Title Studio / Descriptions)
+        - History / Task pages
+        - MCP server (POST /mcp)
+        - Social publishing (Upload-Post)
+        - AI models & integrations
+        - Performance / reliability
+        - Tests & CI
+        - Packaging (Tauri desktop build)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear and concise description of the problem or gap you see.
+      placeholder: "I'm always frustrated when ..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe the solution you'd like
+      description: What behavior or capability do you want, and how should it work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Describe alternatives you've considered
+      description: Any workarounds or alternative approaches.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, mockups, or links that help explain the request.
