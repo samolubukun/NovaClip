@@ -1,0 +1,84 @@
+name: 🐛 Bug report
+description: Report a bug to help us improve NovaClip
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below.
+        First check that a similar issue doesn't already exist.
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode / feature involved
+      description: Which part of NovaClip is affected?
+      options:
+        - Nova Clipper (clip generation)
+        - Nova Studio - Stock B-Roll
+        - Nova Studio - AI B-Roll
+        - Nova Studio - AI Shorts
+        - Nova Edit (agentic editor)
+        - Nova Repurpose
+        - YouTube Studio (Thumbnails / Title Studio / Descriptions)
+        - History / Task pages
+        - MCP server (POST /mcp)
+        - Social publishing (Upload-Post)
+        - Settings / keys
+        - Build / packaging (Docker, Tauri)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: describe
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step instructions to trigger the bug.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      description: e.g. Chrome 123 on Windows 11, Safari 17 on macOS
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: How is the backend running?
+      options:
+        - Natively (Rust + Node)
+        - Docker / Docker Compose
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend stderr output and/or frontend console errors. Remember to redact any API keys.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help, such as screenshots or links.
