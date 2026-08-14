@@ -416,7 +416,10 @@ feature, we'd love your help.
 
 - **[Read the contributing guide](CONTRIBUTING.md)** - setup, workflow, and
   conventions.
-- Open issues for bugs and feature ideas.
+- Please follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+- Report vulnerabilities privately per the [Security Policy](SECURITY.md) -
+  do not file them as public issues.
+- Open issues for bugs and feature ideas (templates provided).
 - PRs should compile clean: `cargo check -p novaclip-api -p novaclip-worker` and
   `npx tsc -b`.
 - Check the [Roadmap](#-roadmap) for high-impact areas like the **Tauri desktop
