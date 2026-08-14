@@ -203,9 +203,14 @@ area can be improved:
 
 ## Code of Conduct
 
-Be kind. This project welcomes everyone regardless of experience level. Harassment
-of any kind is not tolerated. Disagreements happen - keep them technical and
-respectful.
+Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md). Be kind. This
+project welcomes everyone regardless of experience level. Harassment of any kind
+is not tolerated. Disagreements happen - keep them technical and respectful.
+
+## Reporting Security Vulnerabilities
+
+Please do **not** report security issues publicly. Instead, use the
+[Security Policy](SECURITY.md) for private reporting.
 
 ---
 
