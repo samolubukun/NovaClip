@@ -293,7 +293,7 @@ Client config:
 | **Speech AI / STT / TTS** | Deepgram Nova-3 STT, Vosk Local STT, Whisper Local, ElevenLabs, Edge-TTS, Deepgram Aura TTS |
 | **LLM AI** | Google Gemini (text + image models), OpenRouter (free text/vision models) |
 | **Frontend UI** | React 19, TypeScript, Vite 6, Framer Motion, Lucide Icons |
-| **Packaging** | Docker, Docker Compose, Nginx, Makefile |
+| **Packaging** | Docker, Docker Compose, Nginx, Makefile, Tauri 2 (Win NSIS/MSI, macOS DMG universal, Linux AppImage/deb/rpm) |
 
 ---
 
@@ -329,6 +329,21 @@ cd frontend
 npm install
 npm run dev
 ```
+
+### Option C: Desktop (Tauri 2 — all-in-one, zero-dep)
+
+**Installers:** Windows `NovaClip_0.1.0_x64-setup.exe` (NSIS, currentUser) + MSI, macOS `NovaClip_0.1.0_universal.dmg` (10.15+, unsigned), Linux `NovaClip_0.1.0_amd64.deb` + `AppImage` + `rpm` — built via `.github/workflows/tauri.yml` matrix `windows-latest` / `ubuntu-22.04` / `macos-latest` (universal via `lipo`).
+
+- **Bundled:** Frontend `dist` via `tauri://localhost`, backend sidecar `novaclip-api` (`externalBin binaries/novaclip-api-{triple}` on `127.0.0.1:8000`), `migrations` + `vosk-model-small-en-us-0.15` + `vosk-win64`/`vosk-linux` libs, `novaclip_reframe/*.py` + `yolo11n-seg.pt`, `ffmpeg` (`externalBin binaries/ffmpeg-{triple}`), portable Python embed (`resources/python` per OS).
+- **Zero-dep first launch:** `src-tauri/src/main.rs:29` `ensure_venv()` checks `app_data/novaclip_reframe/venv`; if missing, uses bundled `resources/python` (or system `python3`) to `python -m venv` + `pip install --extra-index-url https://download.pytorch.org/whl/cpu yt-dlp edge-tts ultralytics mediapipe opencv scenedetect lap torch` in background thread. After ~2min, AI reframe is local. `ffmpeg` + `venv/bin` added to `PATH` for sidecar, `DATABASE_URL=sqlite://<app_data>/novaclip.db`.
+- **Dev:**
+  ```bash
+  npm install              # root tauri-cli 2.11.4
+  node scripts/setup-desktop.mjs  # builds sidecar per triple -> src-tauri/binaries
+  npm run tauri:dev        # Vite http://localhost:5173 + sidecar (dev uses manual cargo run -p novaclip-api)
+  npm run tauri:build      # -> src-tauri/target/release/bundle/
+  ```
+- **Release:** `git tag v0.1.0; git push origin v0.1.0` → `tauri-action@v0.5` draft `novaclip-v__VERSION__` with `SQLX_OFFLINE=true`, Linux `libayatana-appindicator`, macOS `vosk` brew fallback, `VITE_API_URL=http://127.0.0.1:8000`. See `DESKTOP.md` for bundling + updater signing.
 
 ---
 
@@ -385,8 +400,7 @@ NovaClip/
 Current focus areas and planned work (all open for contribution):
 
 - **🖥️ Tauri 2 desktop app** - native packaging of the whole stack with
-  auto-updates, a tray/offline experience, and one-click local runs. *A major
-  goal.*
+  auto-updates, a tray/offline experience, and one-click local runs. **Shipped v0.1.0** (Win NSIS/MSI, macOS DMG universal, Linux deb/AppImage/rpm, sidecar on 127.0.0.1:8000, zero-dep venv via bundled Python). See `DESKTOP.md`.
 - **Resilience & reliability** - harden the prototype pipelines (AI Shorts,
   YouTube Studio, Nova Edit): more fallbacks, retries, timeouts, and clear
   error surfacing.
