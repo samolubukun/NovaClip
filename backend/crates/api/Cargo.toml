@@ -36,4 +36,5 @@ base64 = { workspace = true }
 default = []
 vosk = ["novaclip-worker/vosk"]
 whisper = ["novaclip-worker/whisper"]
-full = ["vosk", "whisper"]
+diarize = ["novaclip-worker/diarize"]
+full = ["vosk", "whisper", "diarize"]

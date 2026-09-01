@@ -377,6 +377,7 @@ pub async fn transcribe_audio(
     }
 }
 
+#[cfg(feature = "diarize")]
 pub async fn diarize_words_local(
     audio_path: &Path,
     words: &mut Vec<DeepgramWord>,
@@ -458,6 +459,17 @@ pub async fn diarize_words_local(
         tracing::info!("speakrs diarization applied successfully to {} words", words.len());
     }
 
+    Ok(())
+}
+
+#[cfg(not(feature = "diarize"))]
+pub async fn diarize_words_local(
+    _audio_path: &Path,
+    _words: &mut Vec<DeepgramWord>,
+    _segmentation_model: &Path,
+    _embedding_model: &Path,
+) -> Result<()> {
+    // Diarization disabled for this build (CI lite) — Deepgram already provides speaker tags
     Ok(())
 }
 
