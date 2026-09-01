@@ -37,6 +37,8 @@ frontend/tsconfig.tsbuildinfo
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/novaclip-api*
+src-tauri/binaries/ffmpeg*
+src-tauri/resources/python/
 !src-tauri/binaries/.gitkeep
 
 # Environment & Local Configuration

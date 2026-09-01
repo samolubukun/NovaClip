@@ -78,10 +78,12 @@
       "../backend/models/vosk-win64-0.3.45",
       "../backend/novaclip_reframe",
       "../backend/pinterest_scraper.py",
-      "../backend/edge_tts_runner.py"
+      "../backend/edge_tts_runner.py",
+      "resources/python"
     ],
     "externalBin": [
-      "binaries/novaclip-api"
+      "binaries/novaclip-api",
+      "binaries/ffmpeg"
     ]
   },
   "plugins": {
