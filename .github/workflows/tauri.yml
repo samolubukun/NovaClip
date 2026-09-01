@@ -120,14 +120,9 @@ jobs:
           set -euo pipefail
           echo "Building novaclip-api for ${{ matrix.target }} ..."
           if [[ "${{ matrix.target }}" == "universal-apple-darwin" ]]; then
-            # Export vosk lib path for macOS linker (brew)
-            if command -v brew >/dev/null 2>&1; then
-              for p in $(brew --prefix vosk-api 2>/dev/null) $(brew --prefix vosk 2>/dev/null); do
-                if [ -d "$p/lib" ]; then export VOSK_LIB_DIR="$p/lib"; export LIBRARY_PATH="$p/lib:$LIBRARY_PATH"; echo "VOSK_LIB_DIR=$VOSK_LIB_DIR"; break; fi
-              done
-            fi
-            cargo build --release --target aarch64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml
-            cargo build --release --target x86_64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml
+            # macOS: build without vosk (no libvosk on runner), keep whisper
+            cargo build --release --target aarch64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml --features whisper
+            cargo build --release --target x86_64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml --features whisper
             # Create fat binary via lipo for single sidecar artifact
             mkdir -p src-tauri/binaries
             lipo -create \
@@ -139,14 +134,14 @@ jobs:
             cp src-tauri/binaries/novaclip-api-universal-apple-darwin src-tauri/binaries/novaclip-api-x86_64-apple-darwin
             ls -lh src-tauri/binaries/
           elif [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
-            cargo build --release --target ${{ matrix.target }} -p novaclip-api --manifest-path backend/Cargo.toml
+            cargo build --release --target ${{ matrix.target }} -p novaclip-api --manifest-path backend/Cargo.toml --features full
             mkdir -p src-tauri/binaries
             cp backend/target/${{ matrix.target }}/release/novaclip-api.exe src-tauri/binaries/novaclip-api-${{ matrix.target }}.exe
             # Also copy without suffix for Tauri dev fallback
             cp backend/target/${{ matrix.target }}/release/novaclip-api.exe src-tauri/binaries/novaclip-api.exe || true
             ls -lh src-tauri/binaries/
           else
-            cargo build --release --target ${{ matrix.target }} -p novaclip-api --manifest-path backend/Cargo.toml
+            cargo build --release --target ${{ matrix.target }} -p novaclip-api --manifest-path backend/Cargo.toml --features whisper
             mkdir -p src-tauri/binaries
             cp backend/target/${{ matrix.target }}/release/novaclip-api src-tauri/binaries/novaclip-api-${{ matrix.target }}
             cp backend/target/${{ matrix.target }}/release/novaclip-api src-tauri/binaries/novaclip-api || true

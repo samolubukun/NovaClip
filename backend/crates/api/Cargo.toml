@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 novaclip-db = { path = "../db" }
-novaclip-worker = { path = "../worker" }
+novaclip-worker = { path = "../worker", default-features = false }
 axum = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
@@ -31,3 +31,9 @@ async-stream = { workspace = true }
 reqwest = { workspace = true }
 zip = { workspace = true }
 base64 = { workspace = true }
+
+[features]
+default = []
+vosk = ["novaclip-worker/vosk"]
+whisper = ["novaclip-worker/whisper"]
+full = ["vosk", "whisper"]

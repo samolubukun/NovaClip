@@ -130,6 +130,7 @@ async fn decode_pcm_f32le(audio_path: &Path) -> Result<Vec<f32>> {
 
 
 /// Transcribe audio locally using Vosk batch recognition
+#[cfg(feature = "vosk")]
 pub async fn transcribe_with_vosk(
     audio_path: &Path,
     model_path: &Path,
@@ -219,7 +220,18 @@ pub async fn transcribe_with_vosk(
     Ok(transcript)
 }
 
+#[cfg(not(feature = "vosk"))]
+pub async fn transcribe_with_vosk(
+    _audio_path: &Path,
+    _model_path: &Path,
+    _seg_model: &Path,
+    _emb_model: &Path,
+) -> Result<TimestampedTranscript> {
+    anyhow::bail!("Vosk not compiled in this build (feature disabled for CI). Use Deepgram or Whisper.")
+}
+
 /// Transcribe audio locally using Whisper batch recognition
+#[cfg(feature = "whisper")]
 pub async fn transcribe_with_whisper(
     audio_path: &Path,
     model_path: &Path,
@@ -336,6 +348,16 @@ pub async fn transcribe_with_whisper(
         diarize_words_local(audio_path, &mut transcript.words, seg_model, emb_model).await.ok();
     }
     Ok(transcript)
+}
+
+#[cfg(not(feature = "whisper"))]
+pub async fn transcribe_with_whisper(
+    _audio_path: &Path,
+    _model_path: &Path,
+    _seg_model: &Path,
+    _emb_model: &Path,
+) -> Result<TimestampedTranscript> {
+    anyhow::bail!("Whisper not compiled in this build (feature disabled for CI). Use Deepgram or Vosk.")
 }
 
 /// Unified transcription entry point supporting Deepgram, Vosk, and Whisper
