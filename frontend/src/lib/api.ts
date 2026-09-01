@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL || "";
+const isTauriRuntime = typeof window !== "undefined" && "__TAURI__" in window;
+const API_BASE = import.meta.env.VITE_API_URL || (isTauriRuntime ? "http://127.0.0.1:8000" : "");
 
 export const api = {
   async createTask(payload: object) {

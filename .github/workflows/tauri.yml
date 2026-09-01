@@ -1,0 +1,208 @@
+name: "Tauri Desktop — Build & Release"
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "src-tauri/**"
+      - ".github/workflows/tauri.yml"
+      - "package.json"
+      - "scripts/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "src-tauri/**"
+  workflow_dispatch:
+
+concurrency:
+  group: tauri-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+            target: x86_64-pc-windows-msvc
+            binary_suffix: ".exe"
+            bundle_glob: "src-tauri/target/release/bundle/**/*.{exe,msi}"
+          - platform: ubuntu-22.04
+            args: ""
+            target: x86_64-unknown-linux-gnu
+            binary_suffix: ""
+            bundle_glob: "src-tauri/target/release/bundle/**/*.{deb,AppImage,rpm}"
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+            target: universal-apple-darwin
+            binary_suffix: ""
+            bundle_glob: "src-tauri/target/universal-apple-darwin/release/bundle/**/*.{dmg,app.tar.gz}"
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            package-lock.json
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            backend -> target
+            src-tauri -> target
+          # keep cache lean; sidecar is heavy
+          cache-on-failure: false
+
+      - name: Install Linux deps (WebKit, AppIndicator, FFmpeg headers)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            xdg-utils \
+            libfuse2 \
+            ffmpeg
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install root deps (Tauri CLI)
+        # package.json at root pins tauri CLI version used locally and in CI
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+        shell: bash
+
+      - name: Build backend sidecar binary
+        shell: bash
+        env:
+          SQLX_OFFLINE: true
+        run: |
+          set -euo pipefail
+          echo "Building novaclip-api for ${{ matrix.target }} ..."
+          if [[ "${{ matrix.target }}" == "universal-apple-darwin" ]]; then
+            cargo build --release --target aarch64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml
+            cargo build --release --target x86_64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml
+            # Create fat binary via lipo for single sidecar artifact
+            mkdir -p src-tauri/binaries
+            lipo -create \
+              backend/target/aarch64-apple-darwin/release/novaclip-api \
+              backend/target/x86_64-apple-darwin/release/novaclip-api \
+              -output src-tauri/binaries/novaclip-api-universal-apple-darwin
+            # Also produce arch-specific copies expected by Tauri externalBin resolution
+            cp src-tauri/binaries/novaclip-api-universal-apple-darwin src-tauri/binaries/novaclip-api-aarch64-apple-darwin
+            cp src-tauri/binaries/novaclip-api-universal-apple-darwin src-tauri/binaries/novaclip-api-x86_64-apple-darwin
+            ls -lh src-tauri/binaries/
+          elif [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
+            cargo build --release --target ${{ matrix.target }} -p novaclip-api --manifest-path backend/Cargo.toml
+            mkdir -p src-tauri/binaries
+            cp backend/target/${{ matrix.target }}/release/novaclip-api.exe src-tauri/binaries/novaclip-api-${{ matrix.target }}.exe
+            # Also copy without suffix for Tauri dev fallback
+            cp backend/target/${{ matrix.target }}/release/novaclip-api.exe src-tauri/binaries/novaclip-api.exe || true
+            ls -lh src-tauri/binaries/
+          else
+            cargo build --release --target ${{ matrix.target }} -p novaclip-api --manifest-path backend/Cargo.toml
+            mkdir -p src-tauri/binaries
+            cp backend/target/${{ matrix.target }}/release/novaclip-api src-tauri/binaries/novaclip-api-${{ matrix.target }}
+            cp backend/target/${{ matrix.target }}/release/novaclip-api src-tauri/binaries/novaclip-api || true
+            ls -lh src-tauri/binaries/
+          fi
+
+      - name: Build frontend (Vite)
+        env:
+          VITE_API_URL: http://127.0.0.1:8000
+        run: npm run build
+        working-directory: frontend
+
+      - name: Tauri build
+        uses: tauri-apps/tauri-action@v0.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # To enable auto-updater signing, generate a keypair (`tauri signer generate`) and set:
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: src-tauri
+          tagName: novaclip-v__VERSION__
+          releaseName: "NovaClip v__VERSION__"
+          releaseBody: "NovaClip desktop build — Windows (NSIS/MSI) · macOS (DMG) · Linux (AppImage/deb/rpm).\n\nSee install notes in README. Bundled backend sidecar runs on 127.0.0.1:8000."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          includeUpdaterJson: false
+
+      - name: Collect bundles for artifact upload
+        shell: bash
+        run: |
+          echo "Bundles:"
+          find src-tauri/target -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" -o -name "*.dmg" -o -name "*.app.tar.gz" \) | head -n 100 || true
+          ls -R src-tauri/target/release/bundle 2>/dev/null | head -n 100 || true
+          ls -R src-tauri/target/universal-apple-darwin/release/bundle 2>/dev/null | head -n 100 || true
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaclip-${{ matrix.platform }}-${{ matrix.target }}
+          path: |
+            src-tauri/target/release/bundle/**
+            src-tauri/target/universal-apple-darwin/release/bundle/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles
+          merge-multiple: true
+
+      - name: List bundles
+        run: ls -R bundles | head -n 200
+
+      - name: Publish to GitHub Release (re-use draft created by tauri-action)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Tag: $TAG"
+          # tauri-action already created a draft release; just ensure all files are attached if any missed
+          gh release upload "$TAG" bundles/**/* --clobber || echo "gh upload finished (some duplicates may be skipped)"

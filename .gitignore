@@ -33,6 +33,12 @@ backend/models/ggml-base.bin
 *.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
 
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/novaclip-api*
+!src-tauri/binaries/.gitkeep
+
 # Environment & Local Configuration
 .env
 .env.local

@@ -10,11 +10,16 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       "/tasks": "http://localhost:8000",
       "/media": "http://localhost:8000",
       "/health": "http://localhost:8000",
       "/studio": "http://localhost:8000",
+      "/mcp": "http://localhost:8000",
     },
   },
+  // Tauri expects the dev server to be available quickly; disable HMR overlay clash
+  clearScreen: false,
+  envPrefix: ["VITE_"],
 });
