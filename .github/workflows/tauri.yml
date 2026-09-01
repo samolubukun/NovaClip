@@ -165,12 +165,12 @@ jobs:
             cp src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe src-tauri/binaries/ffmpeg.exe 2>/dev/null || true
           elif [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
             echo "Bundling Python + ffmpeg for Linux..."
-            curl -L -o /tmp/python.tar.gz https://github.com/indygreg/python-build-standalone/releases/download/20240725/cpython-3.11.9%2B20240725-x86_64-unknown-linux-gnu-install_only.tar.gz
+            curl -L -o /tmp/python.tar.gz "https://github.com/indygreg/python-build-standalone/releases/download/20240725/cpython-3.11.9+20240725-x86_64-unknown-linux-gnu-install_only.tar.gz"
             mkdir -p src-tauri/resources/python && tar -xzf /tmp/python.tar.gz -C src-tauri/resources/python --strip-components=1
             which ffmpeg && cp $(which ffmpeg) src-tauri/binaries/ffmpeg-x86_64-unknown-linux-gnu && cp src-tauri/binaries/ffmpeg-x86_64-unknown-linux-gnu src-tauri/binaries/ffmpeg || echo "ffmpeg linux copy"
           else
             echo "Bundling Python + ffmpeg for macOS..."
-            curl -L -o /tmp/python.tar.gz https://github.com/indygreg/python-build-standalone/releases/download/20240725/cpython-3.11.9%2B20240725-aarch64-apple-darwin-install_only.tar.gz || curl -L -o /tmp/python.tar.gz https://github.com/indygreg/python-build-standalone/releases/download/20240725/cpython-3.11.9%2B20240725-x86_64-apple-darwin-install_only.tar.gz
+            curl -L -o /tmp/python.tar.gz "https://github.com/indygreg/python-build-standalone/releases/download/20240725/cpython-3.11.9+20240725-aarch64-apple-darwin-install_only.tar.gz" || curl -L -o /tmp/python.tar.gz "https://github.com/indygreg/python-build-standalone/releases/download/20240725/cpython-3.11.9+20240725-x86_64-apple-darwin-install_only.tar.gz"
             mkdir -p src-tauri/resources/python && tar -xzf /tmp/python.tar.gz -C src-tauri/resources/python --strip-components=1 || echo "python mac extract"
             which ffmpeg || brew install ffmpeg; cp $(which ffmpeg) src-tauri/binaries/ffmpeg-universal-apple-darwin 2>/dev/null || cp $(which ffmpeg) src-tauri/binaries/ffmpeg 2>/dev/null || true
             cp src-tauri/binaries/ffmpeg-universal-apple-darwin src-tauri/binaries/ffmpeg-aarch64-apple-darwin 2>/dev/null || true
@@ -196,7 +196,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: src-tauri
-          tagName: novaclip-v__VERSION__
+          tagName: v__VERSION__
           releaseName: "NovaClip v__VERSION__"
           releaseBody: "NovaClip desktop build — Windows (NSIS/MSI) · macOS (DMG) · Linux (AppImage/deb/rpm).\n\nSee install notes in README. Bundled backend sidecar runs on 127.0.0.1:8000."
           releaseDraft: true
