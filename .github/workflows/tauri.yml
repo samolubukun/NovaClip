@@ -85,7 +85,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             libssl-dev \
@@ -93,6 +92,15 @@ jobs:
             xdg-utils \
             libfuse2 \
             ffmpeg
+
+      - name: Install macOS deps (vosk)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          brew update
+          brew install vosk-api || brew install vosk || echo "vosk brew not found - will try fallback"
+          # Ensure libvosk is findable for linker; vosk crate looks at VOSK_LIB_DIR or pkg-config
+          ls -R /opt/homebrew/opt/vosk* 2>/dev/null | head -n 50 || true
+          ls -R /usr/local/opt/vosk* 2>/dev/null | head -n 50 || true
 
       - name: Install frontend deps
         run: npm ci
@@ -112,6 +120,12 @@ jobs:
           set -euo pipefail
           echo "Building novaclip-api for ${{ matrix.target }} ..."
           if [[ "${{ matrix.target }}" == "universal-apple-darwin" ]]; then
+            # Export vosk lib path for macOS linker (brew)
+            if command -v brew >/dev/null 2>&1; then
+              for p in $(brew --prefix vosk-api 2>/dev/null) $(brew --prefix vosk 2>/dev/null); do
+                if [ -d "$p/lib" ]; then export VOSK_LIB_DIR="$p/lib"; export LIBRARY_PATH="$p/lib:$LIBRARY_PATH"; echo "VOSK_LIB_DIR=$VOSK_LIB_DIR"; break; fi
+              done
+            fi
             cargo build --release --target aarch64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml
             cargo build --release --target x86_64-apple-darwin -p novaclip-api --manifest-path backend/Cargo.toml
             # Create fat binary via lipo for single sidecar artifact

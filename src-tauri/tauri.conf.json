@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.novaclip.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ../frontend run dev",
+    "beforeDevCommand": "",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm --prefix ../frontend run build",
+    "beforeBuildCommand": "",
     "frontendDist": "../frontend/dist"
   },
   "app": {
